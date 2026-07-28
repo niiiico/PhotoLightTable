@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct ThumbnailCell: View {
@@ -11,7 +10,7 @@ struct ThumbnailCell: View {
     /// arrow through would be noise.
     let showsSelectionBadge: Bool
 
-    @State private var image: NSImage?
+    @State private var image: PlatformImage?
     @StateObject private var loader = ThumbnailLoader.shared
     @AppStorage(PreferenceKey.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
@@ -58,7 +57,7 @@ struct ThumbnailCell: View {
                 .fill(fillMode == .fit ? Color.black : Color.black.opacity(0.25))
 
             if let image {
-                Image(nsImage: image)
+                Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: fillMode.swiftUIContentMode)
                     .frame(width: size - matInset * 2, height: size - matInset * 2)

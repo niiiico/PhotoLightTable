@@ -1,5 +1,5 @@
-import AppKit
 import Photos
+import SwiftUI
 
 /// Serves thumbnails for the grid and full-size images for the loupe.
 ///
@@ -11,7 +11,7 @@ final class ThumbnailLoader: ObservableObject {
     static let shared = ThumbnailLoader()
 
     private let manager = PHCachingImageManager()
-    private let cache = NSCache<NSString, NSImage>()
+    private let cache = NSCache<NSString, PlatformImage>()
     private var cachedAssets: [PHAsset] = []
     private var cachedSize: CGSize = .zero
 
@@ -26,11 +26,11 @@ final class ThumbnailLoader: ObservableObject {
         "\(id)@\(Int(size.width))x\(Int(size.height))#\(mode.rawValue)" as NSString
     }
 
-    func cachedThumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) -> NSImage? {
+    func cachedThumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) -> PlatformImage? {
         cache.object(forKey: key(item.id, size, mode))
     }
 
-    func thumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) async -> NSImage? {
+    func thumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) async -> PlatformImage? {
         let cacheKey = key(item.id, size, mode)
         if let hit = cache.object(forKey: cacheKey) { return hit }
 
@@ -40,10 +40,10 @@ final class ThumbnailLoader: ObservableObject {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
 
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let scale = Platform.screenScale
         let target = CGSize(width: size.width * scale, height: size.height * scale)
 
-        let image = await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
+        let image = await withCheckedContinuation { (continuation: CheckedContinuation<PlatformImage?, Never>) in
             var resumed = false
             manager.requestImage(for: item.asset,
                                  targetSize: target,
@@ -63,16 +63,16 @@ final class ThumbnailLoader: ObservableObject {
     }
 
     /// Full-resolution-ish image for the loupe. Not cached — one at a time.
-    func fullImage(for item: PhotoItem, maxDimension: CGFloat) async -> NSImage? {
+    func fullImage(for item: PhotoItem, maxDimension: CGFloat) async -> PlatformImage? {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .exact
         options.isNetworkAccessAllowed = true
 
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let scale = Platform.screenScale
         let target = CGSize(width: maxDimension * scale, height: maxDimension * scale)
 
-        return await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<PlatformImage?, Never>) in
             var resumed = false
             manager.requestImage(for: item.asset,
                                  targetSize: target,
@@ -89,7 +89,7 @@ final class ThumbnailLoader: ObservableObject {
     /// Tells PhotoKit which assets are in or near the viewport.
     func updateCaching(visible items: [PhotoItem], size: CGSize, mode: ThumbnailFillMode) {
         guard size.width > 0 else { return }
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let scale = Platform.screenScale
         let target = CGSize(width: size.width * scale, height: size.height * scale)
 
         if target != cachedSize {

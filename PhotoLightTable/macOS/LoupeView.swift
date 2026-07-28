@@ -1,4 +1,4 @@
-import AppKit
+#if os(macOS)
 import SwiftUI
 
 /// Full-screen single-photo review. Same keys as the grid, so the rhythm of
@@ -10,7 +10,7 @@ struct LoupeView: View {
     @EnvironmentObject private var ratings: RatingStore
     @FocusState private var isFocused: Bool
 
-    @State private var image: NSImage?
+    @State private var image: PlatformImage?
     @State private var isLoading = false
     @State private var metadata: PhotoMetadata = .empty
     @AppStorage(PreferenceKey.loupeFields) private var fieldsRaw = LoupeFields.defaultValue
@@ -25,7 +25,7 @@ struct LoupeView: View {
             Color.black.ignoresSafeArea()
 
             if let image {
-                Image(nsImage: image)
+                Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     // The verdict frames the photo itself, so it can't be missed
@@ -193,3 +193,4 @@ struct LoupeView: View {
         }
     }
 }
+#endif

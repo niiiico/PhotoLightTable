@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftData
 import SwiftUI
 
@@ -232,3 +233,4 @@ struct EventEditor: View {
         dismiss()
     }
 }
+#endif

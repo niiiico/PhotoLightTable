@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftData
 import SwiftUI
 
@@ -270,9 +271,7 @@ struct ContentView: View {
             Text("Grant access in System Settings ▸ Privacy & Security ▸ Photos, then reopen the app.")
         } actions: {
             Button("Open Privacy Settings") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos") {
-                    NSWorkspace.shared.open(url)
-                }
+                Platform.openPhotoPrivacySettings()
             }
         }
     }
@@ -329,3 +328,4 @@ struct ShortcutsHelp: View {
         .frame(width: 420)
     }
 }
+#endif

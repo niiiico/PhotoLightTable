@@ -270,13 +270,40 @@ done rather than to library size.
 
 ## Layout
 
+One app target with several destinations — macOS 15+, iOS/iPadOS 18+ — rather
+than separate targets sharing a framework. A single target keeps the project file
+simple, and platform differences are small enough to express in source.
+
 ```
 PhotoLightTable/
-  Models/       Rating (value types), PersistentModels (SwiftData), RatingStore
-  Photos/       PhotoLibraryService, ThumbnailLoader, AlbumSyncer
-  Views/        AppModel, ContentView, SidebarView, LightTableView,
-                ThumbnailCell, LoupeView, EventEditor
+  PhotoLightTableApp.swift   picks the root view per platform
+  Shared/
+    Platform.swift           PlatformImage, screen scale, settings URL
+    Models/                  Rating, PersistentModels, RatingStore, EventMembership
+    Photos/                  PhotoLibraryService, ThumbnailLoader, AlbumSyncer,
+                             EventSuggester, PhotoMetadata
+    Views/                   AppModel, ThumbnailCell, Tally, FlowLayout, Preferences
+  macOS/                     ContentView, SidebarView, LightTableView, LoupeView,
+                             EventEditor, SettingsView, entitlements
+  iOS/                       TouchRootView
 ```
 
-The Xcode project uses synchronized file groups (Xcode 16+), so new files in
+Everything under `Shared/` compiles for both platforms and contains no AppKit or
+UIKit types directly — `PlatformImage` and the `Platform` helpers absorb the
+difference. `macOS/` is wrapped in `#if os(macOS)`: those views assume a pointer,
+a hardware keyboard and a menu bar, so the touch UI is a separate design rather
+than a reflow of them.
+
+Preference *values* (`ThumbnailFillMode`, `PreferenceKey`, `LoupeFields`) are
+shared; only the Settings *UI* is macOS-specific, since iOS has no `Settings`
+scene.
+
+The Xcode project uses synchronized file groups (Xcode 16+), so new files under
 `PhotoLightTable/` are picked up without editing `project.pbxproj`.
+
+Build either platform:
+
+```
+xcodebuild -scheme PhotoLightTable -destination 'platform=macOS' build
+xcodebuild -scheme PhotoLightTable -destination 'platform=iOS Simulator,name=iPad (A16)' build
+```

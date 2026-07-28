@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftData
 import SwiftUI
 
@@ -294,3 +295,4 @@ struct LightTableView: View {
         app.move(by: 1, in: items, extendSelection: false)
     }
 }
+#endif

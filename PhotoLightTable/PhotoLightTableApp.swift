@@ -30,13 +30,14 @@ struct PhotoLightTableApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            rootView
                 .environmentObject(library)
                 .environmentObject(app)
                 .environmentObject(ratings)
                 .environmentObject(syncer)
         }
         .modelContainer(container)
+        #if os(macOS)
         .defaultSize(width: 1280, height: 820)
         .commands {
             CommandGroup(after: .toolbar) {
@@ -45,9 +46,24 @@ struct PhotoLightTableApp: App {
                     .keyboardShortcut("s", modifiers: [.command, .shift])
             }
         }
+        #endif
 
+        #if os(macOS)
         Settings {
             SettingsView()
         }
+        #endif
+    }
+
+    /// The two platforms get different UIs rather than one reflowed layout: the
+    /// Mac app is built around a keyboard and a pointer, the iOS app around
+    /// touch.
+    @ViewBuilder
+    private var rootView: some View {
+        #if os(macOS)
+        ContentView()
+        #else
+        TouchRootView()
+        #endif
     }
 }
