@@ -17,20 +17,84 @@ final class RatingStore: ObservableObject {
     private let context: ModelContext
     private var rows: [String: AssetRating] = [:]
     private let syncer: AlbumSyncer
+    private var baselines: [String: AlbumBaseline] = [:]
+
+    /// Set while folding remote changes in, so applying them doesn't schedule
+    /// another sync and bounce the same edit back at Photos.
+    private var isApplyingRemote = false
+
+    /// Event plans are assembled by the view layer, which knows about events;
+    /// this keeps the most recent set so a rating change can re-sync them too.
+    var eventPlanProvider: (() -> [EventAlbumPlan])?
 
     init(context: ModelContext, syncer: AlbumSyncer) {
         self.context = context
         self.syncer = syncer
         load()
+
+        syncer.onRemoteRatingChanges = { [weak self] delta in
+            self?.applyRemote(delta)
+        }
+        syncer.onBaselineUpdate = { [weak self] key, members in
+            self?.setBaseline(key, members: members)
+        }
     }
 
     private func load() {
-        let descriptor = FetchDescriptor<AssetRating>()
-        guard let existing = try? context.fetch(descriptor) else { return }
-        for row in existing {
-            rows[row.assetID] = row
-            ratings[row.assetID] = row.value
+        if let existing = try? context.fetch(FetchDescriptor<AssetRating>()) {
+            for row in existing {
+                rows[row.assetID] = row
+                ratings[row.assetID] = row.value
+            }
         }
+        if let stored = try? context.fetch(FetchDescriptor<AlbumBaseline>()) {
+            for row in stored { baselines[row.key] = row }
+        }
+    }
+
+    // MARK: - Baselines
+
+    func baseline(_ key: String) -> Set<String> {
+        Set(baselines[key]?.memberIDs ?? [])
+    }
+
+    private func setBaseline(_ key: String, members: Set<String>) {
+        if let row = baselines[key] {
+            row.memberIDs = Array(members)
+            row.updatedAt = .now
+        } else {
+            let row = AlbumBaseline(key: key, memberIDs: Array(members))
+            context.insert(row)
+            baselines[key] = row
+        }
+        persist()
+    }
+
+    /// Folds edits made in Photos back into the store.
+    ///
+    /// A photo dropped into "LightTable — Picked" by hand becomes picked here;
+    /// one dragged out stops being picked. Removals only clear the verdict they
+    /// correspond to, so pulling a photo out of the Rejected album can't wipe a
+    /// pick it never had.
+    private func applyRemote(_ delta: RemoteRatingDelta) {
+        guard !delta.isEmpty else { return }
+        isApplyingRemote = true
+        defer { isApplyingRemote = false }
+
+        for id in delta.pickedAdded { assign(.picked, to: id) }
+        for id in delta.rejectedAdded { assign(.rejected, to: id) }
+        for id in delta.pickedRemoved where rating(for: id).pick == .picked { assign(.unrated, to: id) }
+        for id in delta.rejectedRemoved where rating(for: id).pick == .rejected { assign(.unrated, to: id) }
+
+        revision &+= 1
+        persist()
+    }
+
+    /// Sets a verdict outright, unlike `setPick` which treats a repeat as undo.
+    private func assign(_ pick: Pick, to id: String) {
+        var value = ratings[id] ?? .empty
+        value.pick = pick
+        write(value, for: id)
     }
 
     func rating(for assetID: String) -> RatingValue {
@@ -62,31 +126,46 @@ final class RatingStore: ObservableObject {
         for id in ids {
             var value = ratings[id] ?? .empty
             transform(&value)
-
-            if value.isEmpty {
-                ratings.removeValue(forKey: id)
-                if let row = rows.removeValue(forKey: id) {
-                    context.delete(row)
-                }
-            } else {
-                ratings[id] = value
-                if let row = rows[id] {
-                    row.pickRaw = value.pick.rawValue
-                    row.colorRaw = value.color?.rawValue
-                    row.updatedAt = .now
-                } else {
-                    let row = AssetRating(assetID: id,
-                                          pickRaw: value.pick.rawValue,
-                                          colorRaw: value.color?.rawValue)
-                    context.insert(row)
-                    rows[id] = row
-                }
-            }
+            write(value, for: id)
         }
         revision &+= 1
         persist()
-        syncer.scheduleSync(picked: assetIDs(matching: .picked),
-                            rejected: assetIDs(matching: .rejected))
+        scheduleSync()
+    }
+
+    private func write(_ value: RatingValue, for id: String) {
+        if value.isEmpty {
+            ratings.removeValue(forKey: id)
+            if let row = rows.removeValue(forKey: id) {
+                context.delete(row)
+            }
+        } else {
+            ratings[id] = value
+            if let row = rows[id] {
+                row.pickRaw = value.pick.rawValue
+                row.colorRaw = value.color?.rawValue
+                row.updatedAt = .now
+            } else {
+                let row = AssetRating(assetID: id,
+                                      pickRaw: value.pick.rawValue,
+                                      colorRaw: value.color?.rawValue)
+                context.insert(row)
+                rows[id] = row
+            }
+        }
+    }
+
+    func scheduleSync() {
+        guard !isApplyingRemote else { return }
+        syncer.schedule(snapshot())
+    }
+
+    private func snapshot() -> SyncSnapshot {
+        SyncSnapshot(picked: assetIDs(matching: .picked),
+                     rejected: assetIDs(matching: .rejected),
+                     pickedBaseline: baseline(AlbumSyncer.globalPickedKey),
+                     rejectedBaseline: baseline(AlbumSyncer.globalRejectedKey),
+                     events: eventPlanProvider?() ?? [])
     }
 
     private func persist() {
@@ -109,9 +188,8 @@ final class RatingStore: ObservableObject {
         ratings.reduce(into: 0) { $0 += ($1.value.pick == pick ? 1 : 0) }
     }
 
-    /// Pushes current state to Photos immediately, bypassing the debounce.
+    /// Reconciles with Photos immediately, bypassing the debounce.
     func syncNow() {
-        syncer.syncNow(picked: assetIDs(matching: .picked),
-                       rejected: assetIDs(matching: .rejected))
+        syncer.syncNow(snapshot())
     }
 }

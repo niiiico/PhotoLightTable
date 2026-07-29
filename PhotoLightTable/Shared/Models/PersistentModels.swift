@@ -24,6 +24,25 @@ final class AssetRating {
     }
 }
 
+/// What an album contained at the end of the last successful sync.
+///
+/// Without this, sync can only overwrite: the app cannot tell a photo you added
+/// in Photos from one it hasn't pushed yet, so it deletes the former. Comparing
+/// the album against this baseline turns that into a three-way merge.
+@Model
+final class AlbumBaseline {
+    /// Stable key: "global.picked", "global.rejected", "event.<id>.all", …
+    var key: String
+    var memberIDs: [String]
+    var updatedAt: Date
+
+    init(key: String, memberIDs: [String] = [], updatedAt: Date = .now) {
+        self.key = key
+        self.memberIDs = memberIDs
+        self.updatedAt = updatedAt
+    }
+}
+
 /// A user-defined event: a name over a date range, plus manual overrides for
 /// the stragglers that fall outside it.
 @Model

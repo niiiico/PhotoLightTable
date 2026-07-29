@@ -10,7 +10,7 @@ struct PhotoLightTableApp: App {
     @StateObject private var ratings: RatingStore
 
     init() {
-        let schema = Schema([AssetRating.self, LightTableEvent.self])
+        let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         let container: ModelContainer
         do {

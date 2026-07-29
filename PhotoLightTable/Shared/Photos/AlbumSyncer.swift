@@ -1,12 +1,38 @@
 import Foundation
 import Photos
 
+/// Membership changes made in Photos since the last sync, to be folded back
+/// into the app's own store.
+struct RemoteRatingDelta {
+    var pickedAdded: Set<String> = []
+    var pickedRemoved: Set<String> = []
+    var rejectedAdded: Set<String> = []
+    var rejectedRemoved: Set<String> = []
+
+    var isEmpty: Bool {
+        pickedAdded.isEmpty && pickedRemoved.isEmpty
+            && rejectedAdded.isEmpty && rejectedRemoved.isEmpty
+    }
+
+    mutating func formUnion(_ other: RemoteRatingDelta) {
+        pickedAdded.formUnion(other.pickedAdded)
+        pickedRemoved.formUnion(other.pickedRemoved)
+        rejectedAdded.formUnion(other.rejectedAdded)
+        rejectedRemoved.formUnion(other.rejectedRemoved)
+    }
+}
+
 /// What one event should look like in Photos: a folder holding an album of
 /// everything in the event and an album of the picks.
 struct EventAlbumPlan {
+    /// Stable prefix for this event's baseline records.
+    let key: String
     let name: String
     let allIDs: Set<String>
     let pickedIDs: Set<String>
+    /// Membership at the end of the last successful sync, per album.
+    let allBaseline: Set<String>
+    let pickedBaseline: Set<String>
 
     var folderID: String?
     var albumID: String?
@@ -15,9 +41,20 @@ struct EventAlbumPlan {
     /// Writes newly created collection identifiers back onto the event, so a
     /// later rename updates the same folder instead of making another one.
     let persistIdentifiers: (_ folderID: String?, _ albumID: String?, _ pickedAlbumID: String?) -> Void
+    /// Photos added to or removed from the event's album inside Photos.
+    let applyMembershipDelta: (_ added: Set<String>, _ removed: Set<String>) -> Void
 }
 
-/// Mirrors pick/reject state into real Photos albums.
+/// Everything the syncer needs for one pass.
+struct SyncSnapshot {
+    var picked: Set<String> = []
+    var rejected: Set<String> = []
+    var pickedBaseline: Set<String> = []
+    var rejectedBaseline: Set<String> = []
+    var events: [EventAlbumPlan] = []
+}
+
+/// Keeps the app's ratings and the Photos albums in step, in both directions.
 ///
 /// Album mutations are `performChanges` transactions that notify observers and
 /// queue an iCloud sync, so they cost far too much to run on every keypress.
@@ -29,6 +66,9 @@ final class AlbumSyncer: ObservableObject {
     static let rootFolderTitle = "LightTable"
     static let pickedAlbumTitle = "LightTable — Picked"
     static let rejectedAlbumTitle = "LightTable — Rejected"
+
+    static let globalPickedKey = "global.picked"
+    static let globalRejectedKey = "global.rejected"
 
     enum Status: Equatable {
         case idle
@@ -42,15 +82,16 @@ final class AlbumSyncer: ObservableObject {
         didSet { UserDefaults.standard.set(isEnabled, forKey: Self.enabledKey) }
     }
 
+    /// Called with anything that changed in Photos since the last sync.
+    var onRemoteRatingChanges: ((RemoteRatingDelta) -> Void)?
+    /// Called with an album's membership once it has converged, to be stored as
+    /// the next baseline.
+    var onBaselineUpdate: ((_ key: String, _ members: Set<String>) -> Void)?
+
     private static let enabledKey = "AlbumSyncEnabled"
     private let debounce: Duration = .seconds(2)
     private var pendingTask: Task<Void, Never>?
-
-    // Latest desired state. Global picks and per-event plans are updated from
-    // different places but share one timer, so they can't race each other.
-    private var latestPicked: Set<String> = []
-    private var latestRejected: Set<String> = []
-    private var latestPlans: [EventAlbumPlan] = []
+    private var snapshot = SyncSnapshot()
 
     init() {
         if UserDefaults.standard.object(forKey: Self.enabledKey) != nil {
@@ -60,25 +101,8 @@ final class AlbumSyncer: ObservableObject {
 
     // MARK: - Scheduling
 
-    func scheduleSync(picked: Set<String>, rejected: Set<String>) {
-        latestPicked = picked
-        latestRejected = rejected
-        arm()
-    }
-
-    func scheduleEventSync(_ plans: [EventAlbumPlan]) {
-        latestPlans = plans
-        arm()
-    }
-
-    func syncNow(picked: Set<String>, rejected: Set<String>) {
-        latestPicked = picked
-        latestRejected = rejected
-        pendingTask?.cancel()
-        pendingTask = Task { await self.reconcileAll() }
-    }
-
-    private func arm() {
+    func schedule(_ snapshot: SyncSnapshot) {
+        self.snapshot = snapshot
         guard isEnabled else { return }
         pendingTask?.cancel()
         status = .pending
@@ -89,19 +113,40 @@ final class AlbumSyncer: ObservableObject {
         }
     }
 
+    func syncNow(_ snapshot: SyncSnapshot) {
+        self.snapshot = snapshot
+        pendingTask?.cancel()
+        pendingTask = Task { await self.reconcileAll() }
+    }
+
     // MARK: - Reconcile
 
     private func reconcileAll() async {
         status = .syncing
+        var delta = RemoteRatingDelta()
+
         do {
             let root = try await findOrCreateFolder(id: nil, title: Self.rootFolderTitle, parent: nil)
-            try await reconcileAlbum(id: nil, title: Self.pickedAlbumTitle,
-                                     desired: latestPicked, in: root, adoptLibraryWide: true)
-            try await reconcileAlbum(id: nil, title: Self.rejectedAlbumTitle,
-                                     desired: latestRejected, in: root, adoptLibraryWide: true)
-            for plan in latestPlans {
-                try await reconcile(plan, under: root)
+
+            let picked = try await reconcileAlbum(
+                title: Self.pickedAlbumTitle, desired: snapshot.picked,
+                baseline: snapshot.pickedBaseline, in: root, adoptLibraryWide: true)
+            delta.pickedAdded = picked.remoteAdded
+            delta.pickedRemoved = picked.remoteRemoved
+            onBaselineUpdate?(Self.globalPickedKey, picked.members)
+
+            let rejected = try await reconcileAlbum(
+                title: Self.rejectedAlbumTitle, desired: snapshot.rejected,
+                baseline: snapshot.rejectedBaseline, in: root, adoptLibraryWide: true)
+            delta.rejectedAdded = rejected.remoteAdded
+            delta.rejectedRemoved = rejected.remoteRemoved
+            onBaselineUpdate?(Self.globalRejectedKey, rejected.members)
+
+            for plan in snapshot.events {
+                delta.formUnion(try await reconcile(plan, under: root))
             }
+
+            if !delta.isEmpty { onRemoteRatingChanges?(delta) }
             status = .idle
         } catch is CancellationError {
             status = .idle
@@ -110,48 +155,75 @@ final class AlbumSyncer: ObservableObject {
         }
     }
 
-    private func reconcile(_ plan: EventAlbumPlan, under root: PHCollectionList) async throws {
+    private func reconcile(_ plan: EventAlbumPlan,
+                           under root: PHCollectionList) async throws -> RemoteRatingDelta {
         let folder = try await findOrCreateFolder(id: plan.folderID, title: plan.name, parent: root)
+        let album = try await findOrCreateAlbum(id: plan.albumID, title: plan.name, in: folder)
+        let pickedAlbum = try await findOrCreateAlbum(
+            id: plan.pickedAlbumID, title: "\(plan.name) — Picked", in: folder)
 
-        let album = try await findOrCreateAlbum(id: plan.albumID,
-                                                title: plan.name,
-                                                in: folder)
-        let pickedAlbum = try await findOrCreateAlbum(id: plan.pickedAlbumID,
-                                                      title: "\(plan.name) — Picked",
-                                                      in: folder)
-
-        try await reconcileMembership(of: album, desired: plan.allIDs)
-        try await reconcileMembership(of: pickedAlbum, desired: plan.pickedIDs)
+        let all = try await merge(album: album, desired: plan.allIDs, baseline: plan.allBaseline)
+        let picked = try await merge(album: pickedAlbum, desired: plan.pickedIDs, baseline: plan.pickedBaseline)
 
         plan.persistIdentifiers(folder.localIdentifier,
                                 album.localIdentifier,
                                 pickedAlbum.localIdentifier)
+        if !all.remoteAdded.isEmpty || !all.remoteRemoved.isEmpty {
+            plan.applyMembershipDelta(all.remoteAdded, all.remoteRemoved)
+        }
+        onBaselineUpdate?("\(plan.key).all", all.members)
+        onBaselineUpdate?("\(plan.key).picked", picked.members)
+
+        // A photo dropped into an event's Picked album in Photos is a pick, the
+        // same as pressing P here.
+        return RemoteRatingDelta(pickedAdded: picked.remoteAdded,
+                                 pickedRemoved: picked.remoteRemoved)
     }
 
-    /// Convenience for the two global albums, which live at the top level.
-    private func reconcileAlbum(id: String?,
-                                title: String,
+    private struct MergeResult {
+        var members: Set<String> = []
+        var remoteAdded: Set<String> = []
+        var remoteRemoved: Set<String> = []
+    }
+
+    private func reconcileAlbum(title: String,
                                 desired: Set<String>,
+                                baseline: Set<String>,
                                 in folder: PHCollectionList?,
-                                adoptLibraryWide: Bool = false) async throws {
-        let album = try await findOrCreateAlbum(id: id, title: title, in: folder,
+                                adoptLibraryWide: Bool = false) async throws -> MergeResult {
+        let album = try await findOrCreateAlbum(id: nil, title: title, in: folder,
                                                 adoptLibraryWide: adoptLibraryWide)
-        try await reconcileMembership(of: album, desired: desired)
+        return try await merge(album: album, desired: desired, baseline: baseline)
     }
 
-    /// Brings one album's membership in line with `desired`, adding and removing
-    /// only the difference so unrelated edits made in Photos survive.
-    private func reconcileMembership(of album: PHAssetCollection, desired: Set<String>) async throws {
+    /// Three-way merge of one album.
+    ///
+    /// `baseline` is what the album held when the app last agreed with it, so
+    /// anything added or removed since was done by hand in Photos and must be
+    /// preserved. Without a baseline this could only overwrite, and every edit
+    /// made in Photos would be silently undone on the next pass.
+    private func merge(album: PHAssetCollection,
+                       desired: Set<String>,
+                       baseline: Set<String>) async throws -> MergeResult {
         let existingAssets = PHAsset.fetchAssets(in: album, options: nil)
         var existingByID: [String: PHAsset] = [:]
         existingAssets.enumerateObjects { asset, _, _ in
             existingByID[asset.localIdentifier] = asset
         }
-        let existingIDs = Set(existingByID.keys)
+        let remote = Set(existingByID.keys)
 
-        let toAddIDs = desired.subtracting(existingIDs)
-        let toRemoveIDs = existingIDs.subtracting(desired)
-        guard !toAddIDs.isEmpty || !toRemoveIDs.isEmpty else { return }
+        var result = MergeResult()
+        result.remoteAdded = remote.subtracting(baseline)
+        result.remoteRemoved = baseline.subtracting(remote)
+
+        // Remote edits win for the assets they touch; every other asset keeps
+        // whatever the app says.
+        let final = desired.union(result.remoteAdded).subtracting(result.remoteRemoved)
+        result.members = final
+
+        let toAddIDs = final.subtracting(remote)
+        let toRemoveIDs = remote.subtracting(final)
+        guard !toAddIDs.isEmpty || !toRemoveIDs.isEmpty else { return result }
 
         let toAdd = toAddIDs.isEmpty ? [] : assets(withIDs: Array(toAddIDs))
         let toRemove = toRemoveIDs.compactMap { existingByID[$0] }
@@ -161,6 +233,7 @@ final class AlbumSyncer: ObservableObject {
             if !toAdd.isEmpty { request.addAssets(toAdd as NSFastEnumeration) }
             if !toRemove.isEmpty { request.removeAssets(toRemove as NSFastEnumeration) }
         }
+        return result
     }
 
     private func assets(withIDs ids: [String]) -> [PHAsset] {
@@ -175,7 +248,6 @@ final class AlbumSyncer: ObservableObject {
     private func findOrCreateFolder(id: String?,
                                     title: String,
                                     parent: PHCollectionList?) async throws -> PHCollectionList {
-        // Prefer the folder we made before, so renaming the event renames it.
         if let id,
            let existing = PHCollectionList.fetchCollectionLists(
             withLocalIdentifiers: [id], options: nil).firstObject {
@@ -300,9 +372,6 @@ final class AlbumSyncer: ObservableObject {
                                                      options: options).firstObject
     }
 
-    /// Looks inside the folder first, so an event album doesn't collide with a
-    /// same-named album elsewhere, then falls back to a library-wide search to
-    /// adopt an album that hasn't been filed into the folder yet.
     private func album(titled title: String,
                        in folder: PHCollectionList?,
                        adoptLibraryWide: Bool) -> PHAssetCollection? {
