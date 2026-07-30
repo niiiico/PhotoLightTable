@@ -241,4 +241,80 @@ final class RatingStore: ObservableObject {
     func syncNow() {
         syncer.syncNow(snapshot())
     }
+
+    // MARK: - Rebuilding from Photos
+
+    func readImportFromPhotos() -> PhotosImport {
+        syncer.readFromPhotos()
+    }
+
+    /// Rebuilds events and ratings from what the Photos albums say.
+    ///
+    /// Merges rather than replaces: album membership is added to what's already
+    /// here, and an event whose folder is already known is updated rather than
+    /// duplicated. Nothing local is discarded, so running this twice is safe.
+    @discardableResult
+    func applyImport(_ imported: PhotosImport) -> Int {
+        guard !imported.isEmpty else { return 0 }
+        let items = itemsProvider?() ?? []
+        let datesByID = Dictionary(items.compactMap { item in
+            item.creationDate.map { (item.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+
+        isApplyingRemote = true
+        var changed = 0
+
+        for id in imported.picked { assign(.picked, to: id); changed += 1 }
+        for id in imported.rejected { assign(.rejected, to: id); changed += 1 }
+
+        let existing = (try? context.fetch(FetchDescriptor<LightTableEvent>())) ?? []
+        for imported in imported.events {
+            // Match on the folder we created; fall back to the name so a folder
+            // the user made by hand is still adopted rather than duplicated.
+            let event = existing.first { $0.photosFolderID == imported.folderID }
+                ?? existing.first { $0.name == imported.name }
+                ?? {
+                    let dates = imported.memberIDs.compactMap { datesByID[$0] }.sorted()
+                    let new = LightTableEvent(name: imported.name,
+                                              startDate: dates.first ?? .now,
+                                              endDate: dates.last ?? .now)
+                    context.insert(new)
+                    return new
+                }()
+
+            event.explicitMembership = true
+            event.pinnedAssetIDs = Array(imported.memberIDs)
+            event.syncsToPhotos = true
+            event.photosFolderID = imported.folderID
+            event.photosAlbumID = imported.albumID
+            event.photosPickedAlbumID = imported.pickedAlbumID
+
+            let dates = imported.memberIDs.compactMap { datesByID[$0] }.sorted()
+            if let first = dates.first, let last = dates.last {
+                event.startDate = first
+                event.endDate = last
+            }
+
+            for id in imported.pickedIDs { assign(.picked, to: id) }
+            changed += imported.memberIDs.count
+        }
+
+        revision &+= 1
+        persist()
+
+        // Record what was read as the baseline, so the next reconcile sees the
+        // albums as already agreed rather than as a pile of remote additions.
+        setBaseline(AlbumSyncer.globalPickedKey, members: imported.picked)
+        setBaseline(AlbumSyncer.globalRejectedKey, members: imported.rejected)
+        for importedEvent in imported.events {
+            guard let event = (try? context.fetch(FetchDescriptor<LightTableEvent>()))?
+                .first(where: { $0.photosFolderID == importedEvent.folderID }) else { continue }
+            let key = "event.\(event.persistentModelID.hashValue)"
+            setBaseline("\(key).all", members: importedEvent.memberIDs)
+            setBaseline("\(key).picked", members: importedEvent.pickedIDs)
+        }
+
+        isApplyingRemote = false
+        return changed
+    }
 }

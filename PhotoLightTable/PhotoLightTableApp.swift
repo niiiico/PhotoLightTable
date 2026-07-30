@@ -52,6 +52,12 @@ struct PhotoLightTableApp: App {
                 Toggle("Sync Picks to Photos Albums", isOn: $syncer.isEnabled)
                 Button("Sync Now") { ratings.syncNow() }
                     .keyboardShortcut("s", modifiers: [.command, .shift])
+                Divider()
+                // Posted rather than called directly: the command lives in the
+                // App scene, the confirmation belongs to the window's view.
+                Button("Rebuild from Photos Albums…") {
+                    NotificationCenter.default.post(name: .rebuildFromPhotos, object: nil)
+                }
             }
         }
         #endif

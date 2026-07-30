@@ -13,6 +13,7 @@ struct ContentView: View {
 
     @State private var editorMode: EventEditor.Mode?
     @State private var showsShortcuts = false
+    @State private var pendingImport: PhotosImport?
 
     var body: some View {
         NavigationSplitView {
@@ -63,6 +64,24 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.12), value: app.isLoupePresented)
         .sheet(isPresented: $showsShortcuts) { ShortcutsHelp() }
+        .alert("Rebuild from Photos albums?",
+               isPresented: Binding(get: { pendingImport != nil },
+                                    set: { if !$0 { pendingImport = nil } })) {
+            Button("Cancel", role: .cancel) { pendingImport = nil }
+            Button("Rebuild") {
+                if let pendingImport { ratings.applyImport(pendingImport) }
+                pendingImport = nil
+            }
+        } message: {
+            Text(pendingImport.map { found in
+                found.isEmpty
+                    ? "No LightTable albums were found in Photos."
+                    : "Found \(found.summary). This adds them to what's already here — nothing is removed."
+            } ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rebuildFromPhotos)) { _ in
+            pendingImport = ratings.readImportFromPhotos()
+        }
         .task {
             await library.requestAccess()
             // Reconcile once at startup. Without this, sync only ever runs off
