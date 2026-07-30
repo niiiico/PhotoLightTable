@@ -63,6 +63,9 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.12), value: app.isLoupePresented)
+        // The loupe covers the whole window, so the toolbar behind it is only
+        // clutter around an image being judged.
+        .toolbar(app.isLoupePresented ? .hidden : .visible, for: .windowToolbar)
         .sheet(isPresented: $showsShortcuts) { ShortcutsHelp() }
         .alert("Rebuild from Photos albums?",
                isPresented: Binding(get: { pendingImport != nil },

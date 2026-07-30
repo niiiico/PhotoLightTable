@@ -75,6 +75,11 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
+            .background(ScrollPanCatcher { delta in
+                guard zoom > 1 else { return }
+                pan = CGSize(width: pan.width + delta.width, height: pan.height + delta.height)
+                committedPan = pan
+            })
             .gesture(panGesture)
             .simultaneousGesture(magnifyGesture)
             .onTapGesture(count: 2) { toggleZoom() }
@@ -181,21 +186,32 @@ struct LoupeView: View {
         .background(.bar)
     }
 
+    /// Each value is a menu: clicking it swaps that slot for another field.
+    /// Arranging the bar where you read it beats a checklist in Settings, so
+    /// there is no longer a Settings pane for this.
     private var bottomBar: some View {
         let fields = LoupeFields.decode(fieldsRaw)
-            .compactMap { field -> (MetadataField, String)? in
-                guard let current,
-                      let value = field.display(item: current, metadata: metadata) else { return nil }
-                return (field, value)
-            }
+        let unused = MetadataField.allCases.filter { !fields.contains($0) }
 
         return HStack(spacing: 14) {
             FlowLayout(spacing: 14) {
-                ForEach(fields, id: \.0) { field, value in
-                    Text(value)
-                        .font(.callout)
-                        .foregroundStyle(field == .dateTime ? .primary : .secondary)
-                        .help(field.label)
+                ForEach(Array(fields.enumerated()), id: \.element) { index, field in
+                    fieldSlot(field, at: index)
+                }
+
+                if !unused.isEmpty {
+                    Menu {
+                        ForEach(unused) { field in
+                            Button(field.label) { setFields(fields + [field]) }
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Show another field")
                 }
             }
 
@@ -211,6 +227,54 @@ struct LoupeView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private func fieldSlot(_ field: MetadataField, at index: Int) -> some View {
+        let fields = LoupeFields.decode(fieldsRaw)
+        let value = current.flatMap { field.display(item: $0, metadata: metadata) }
+
+        return Menu {
+            ForEach(MetadataField.allCases) { candidate in
+                Button {
+                    var updated = fields
+                    // Swapping in a field that's already shown elsewhere would
+                    // duplicate it, so the two slots trade places instead.
+                    if let existing = updated.firstIndex(of: candidate) {
+                        updated.swapAt(index, existing)
+                    } else {
+                        updated[index] = candidate
+                    }
+                    setFields(updated)
+                } label: {
+                    if candidate == field {
+                        Label(candidate.label, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.label)
+                    }
+                }
+            }
+            Divider()
+            Button("Remove", role: .destructive) {
+                var updated = fields
+                updated.remove(at: index)
+                setFields(updated)
+            }
+        } label: {
+            // A slot the photo has no value for still shows, so it stays
+            // clickable and the bar doesn't reshuffle between images.
+            Text(value ?? "—")
+                .font(.callout)
+                .foregroundStyle(value == nil ? .tertiary
+                                 : (field == .dateTime ? .primary : .secondary))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("\(field.label) — click to change")
+    }
+
+    private func setFields(_ fields: [MetadataField]) {
+        fieldsRaw = LoupeFields.encode(fields)
     }
 
     // MARK: - State

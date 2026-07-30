@@ -72,10 +72,9 @@ enum LoupeFields {
         fields.map(\.rawValue).joined(separator: ",")
     }
 
+    /// Preserves the stored order: the slots are arranged in the loupe itself,
+    /// so their sequence is the user's, not `allCases`.
     static func decode(_ raw: String) -> [MetadataField] {
-        let chosen = Set(raw.split(separator: ",").map(String.init))
-        // Iterating allCases rather than the stored order keeps the info bar in
-        // a stable, sensible sequence however the toggles were flipped.
-        return MetadataField.allCases.filter { chosen.contains($0.rawValue) }
+        raw.split(separator: ",").compactMap { MetadataField(rawValue: String($0)) }
     }
 }
