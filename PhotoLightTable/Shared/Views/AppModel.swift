@@ -163,23 +163,36 @@ final class AppModel: ObservableObject {
         selectedIDs = Set(items.map(\.id))
     }
 
+    enum SelectionCombine {
+        /// The run becomes the selection.
+        case replace
+        /// The run is toggled against the selection: photos not in it are added,
+        /// photos already in it are removed. What Command-dragging does in
+        /// Finder, and what makes Command a single "add or remove" modifier
+        /// rather than needing a second key for removal.
+        case toggle
+    }
+
     /// Selects everything between two photos in display order, as dragging
     /// across the grid does.
     ///
-    /// `addingTo` is the selection as it stood when the drag began. Unioning
+    /// `base` is the selection as it stood when the drag began. Combining
     /// against that rather than against the live selection means shrinking the
-    /// drag back releases photos again, instead of the run only ever growing.
+    /// drag back undoes its effect, instead of each step compounding the last.
     func selectRange(from anchorID: String,
                      to targetID: String,
                      in items: [PhotoItem],
-                     addingTo base: Set<String>? = nil) {
+                     base: Set<String> = [],
+                     combine: SelectionCombine = .replace) {
         guard let from = items.firstIndex(where: { $0.id == anchorID }),
               let to = items.firstIndex(where: { $0.id == targetID }) else { return }
         let range = from <= to ? from...to : to...from
+        let ids = Set(items[range].map(\.id))
 
-        var ids = Set(items[range].map(\.id))
-        if let base { ids.formUnion(base) }
-        selectedIDs = ids
+        switch combine {
+        case .replace: selectedIDs = ids
+        case .toggle: selectedIDs = base.symmetricDifference(ids)
+        }
         focusID = targetID
     }
 

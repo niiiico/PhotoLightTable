@@ -22,8 +22,9 @@ struct LightTableView: View {
     @State private var cellFrames: [String: CGRect] = [:]
     @State private var dragAnchorID: String?
     /// The selection as it stood when the current drag began, kept so a
-    /// Command-drag can add to it without swallowing it.
-    @State private var dragBaseSelection: Set<String>?
+    /// Command-drag combines against a fixed base rather than compounding.
+    @State private var dragBaseSelection: Set<String> = []
+    @State private var dragCombine: AppModel.SelectionCombine = .replace
     @State private var dragLastTargetID: String?
 
     private let spacing: CGFloat = 10
@@ -101,8 +102,9 @@ struct LightTableView: View {
     }
 
     /// Click a photo and slide across neighbours to select the run, the way
-    /// Photos does. Hold Command to add that run to what's already selected.
-    /// A minimum distance keeps ordinary clicks working.
+    /// Photos does. Hold Command to toggle that run against the selection —
+    /// adding photos it doesn't hold and removing ones it does. A minimum
+    /// distance keeps ordinary clicks working.
     private var dragSelectGesture: some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.gridSpace))
             .onChanged { value in
@@ -114,8 +116,9 @@ struct LightTableView: View {
                     // keyboard is read directly — and only at the start, so
                     // pressing Command mid-drag doesn't change the rules
                     // underneath the gesture.
-                    dragBaseSelection = NSEvent.modifierFlags.contains(.command)
-                        ? app.selectedIDs : nil
+                    let isCommand = NSEvent.modifierFlags.contains(.command)
+                    dragCombine = isCommand ? .toggle : .replace
+                    dragBaseSelection = isCommand ? app.selectedIDs : []
                 }
 
                 guard let anchor = dragAnchorID,
@@ -126,11 +129,12 @@ struct LightTableView: View {
                 guard target != dragLastTargetID else { return }
                 dragLastTargetID = target
                 app.selectRange(from: anchor, to: target, in: items,
-                                addingTo: dragBaseSelection)
+                                base: dragBaseSelection, combine: dragCombine)
             }
             .onEnded { _ in
                 dragAnchorID = nil
-                dragBaseSelection = nil
+                dragBaseSelection = []
+                dragCombine = .replace
                 dragLastTargetID = nil
             }
     }
