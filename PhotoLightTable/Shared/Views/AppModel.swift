@@ -163,6 +163,16 @@ final class AppModel: ObservableObject {
         selectedIDs = Set(items.map(\.id))
     }
 
+    /// Selects everything between two photos in display order, as dragging
+    /// across the grid does.
+    func selectRange(from anchorID: String, to targetID: String, in items: [PhotoItem]) {
+        guard let from = items.firstIndex(where: { $0.id == anchorID }),
+              let to = items.firstIndex(where: { $0.id == targetID }) else { return }
+        let range = from <= to ? from...to : to...from
+        selectedIDs = Set(items[range].map(\.id))
+        focusID = targetID
+    }
+
     /// Grows the selection to everything shot around the same time and place.
     /// Repeating it widens the net one granularity at a time, so a photo can be
     /// expanded from its session up to the whole trip by pressing R again.

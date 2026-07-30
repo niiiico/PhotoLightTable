@@ -18,15 +18,9 @@ struct LoupeView: View {
     @State private var image: PlatformImage?
     @State private var isLoading = false
     @State private var metadata: PhotoMetadata = .empty
-    @AppStorage(PreferenceKey.loupeFields) private var fieldsRaw = LoupeFields.defaultValue
+    @AppStorage(PreferenceKeys.loupeFields) private var fieldsRaw = LoupeFields.defaultValue
 
-    @State private var zoom: CGFloat = 1
-    @State private var committedZoom: CGFloat = 1
-    @State private var pan: CGSize = .zero
-    @State private var committedPan: CGSize = .zero
-
-    private static let maxZoom: CGFloat = 8
-    private static let doubleClickZoom: CGFloat = 2.5
+    @StateObject private var zoomState = LoupeZoom()
 
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
@@ -44,11 +38,15 @@ struct LoupeView: View {
         .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
-        .onAppear { isFocused = true }
+        .onAppear {
+            isFocused = true
+            zoomState.startMonitoringScroll()
+        }
+        .onDisappear { zoomState.stopMonitoringScroll() }
         .animation(.easeOut(duration: 0.12), value: currentPick)
         .onKeyPress(action: handleKey)
         .task(id: current?.id) {
-            resetZoom()
+            zoomState.reset()
             await loadImage()
         }
         .task(id: current?.id) {
@@ -66,8 +64,8 @@ struct LoupeView: View {
                     Image(platformImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .scaleEffect(zoom)
-                        .offset(pan)
+                        .scaleEffect(zoomState.zoom)
+                        .offset(zoomState.pan)
                 } else if isLoading {
                     ProgressView().controlSize(.large)
                 }
@@ -75,14 +73,9 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
-            .background(ScrollPanCatcher { delta in
-                guard zoom > 1 else { return }
-                pan = CGSize(width: pan.width + delta.width, height: pan.height + delta.height)
-                committedPan = pan
-            })
             .gesture(panGesture)
             .simultaneousGesture(magnifyGesture)
-            .onTapGesture(count: 2) { toggleZoom() }
+            .onTapGesture(count: 2) { zoomState.toggle() }
         }
         .padding(14)
         // Drawn outside that padding, so the frame never touches the image.
@@ -95,46 +88,14 @@ struct LoupeView: View {
 
     private var panGesture: some Gesture {
         DragGesture()
-            .onChanged { value in
-                guard zoom > 1 else { return }
-                pan = CGSize(width: committedPan.width + value.translation.width,
-                             height: committedPan.height + value.translation.height)
-            }
-            .onEnded { _ in committedPan = pan }
+            .onChanged { zoomState.dragTo($0.translation) }
+            .onEnded { _ in zoomState.endDrag() }
     }
 
     private var magnifyGesture: some Gesture {
         MagnifyGesture()
-            .onChanged { value in
-                zoom = min(max(committedZoom * value.magnification, 1), Self.maxZoom)
-                if zoom == 1 { pan = .zero }
-            }
-            .onEnded { _ in
-                committedZoom = zoom
-                committedPan = pan
-            }
-    }
-
-    private func setZoom(_ value: CGFloat) {
-        zoom = min(max(value, 1), Self.maxZoom)
-        committedZoom = zoom
-        // Panning is meaningless at fit, and a leftover offset would shift the
-        // next photo off-centre.
-        if zoom == 1 {
-            pan = .zero
-            committedPan = .zero
-        }
-    }
-
-    private func toggleZoom() {
-        setZoom(zoom > 1 ? 1 : Self.doubleClickZoom)
-    }
-
-    private func resetZoom() {
-        zoom = 1
-        committedZoom = 1
-        pan = .zero
-        committedPan = .zero
+            .onChanged { zoomState.magnify($0.magnification) }
+            .onEnded { _ in zoomState.endMagnify() }
     }
 
     // MARK: - Bars
@@ -161,12 +122,12 @@ struct LoupeView: View {
 
             Spacer()
 
-            if zoom > 1 {
-                Text("\(Int(zoom * 100))%")
+            if zoomState.isZoomed {
+                Text("\(Int(zoomState.zoom * 100))%")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .fixedSize()
-                Button("Fit") { setZoom(1) }
+                Button("Fit") { zoomState.reset() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
             }
@@ -330,13 +291,13 @@ struct LoupeView: View {
             ratings.clear([focusID])
             return .handled
         case "z":
-            toggleZoom()
+            zoomState.toggle()
             return .handled
         case "+", "=":
-            setZoom(zoom * 1.5)
+            zoomState.set(zoomState.zoom * 1.5)
             return .handled
         case "-":
-            setZoom(zoom / 1.5)
+            zoomState.set(zoomState.zoom / 1.5)
             return .handled
         default:
             // 6–0 stay colour labels here, as they are in the grid.

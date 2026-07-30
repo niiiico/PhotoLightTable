@@ -9,7 +9,7 @@ struct SettingsView: View {
 }
 
 private struct AppearanceSettings: View {
-    @AppStorage(PreferenceKey.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
+    @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
     private var fillMode: Binding<ThumbnailFillMode> {
         Binding(
@@ -18,7 +18,7 @@ private struct AppearanceSettings: View {
         )
     }
 
-    @AppStorage(PreferenceKey.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
+    @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     private var appearance: Binding<AppearancePreference> {
         Binding(

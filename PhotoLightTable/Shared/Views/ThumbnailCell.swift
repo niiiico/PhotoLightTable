@@ -12,7 +12,7 @@ struct ThumbnailCell: View {
 
     @State private var image: PlatformImage?
     @StateObject private var loader = ThumbnailLoader.shared
-    @AppStorage(PreferenceKey.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
+    @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
     private var fillMode: ThumbnailFillMode {
         ThumbnailFillMode(rawValue: fillModeRaw) ?? .fill

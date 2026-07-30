@@ -14,7 +14,14 @@ struct LightTableView: View {
     @Environment(\.modelContext) private var context
     @FocusState private var isGridFocused: Bool
 
+    /// Frames of the cells currently laid out, used to find what the pointer is
+    /// over while dragging. LazyVGrid only materialises visible cells, so this
+    /// stays small however large the library is.
+    @State private var cellFrames: [String: CGRect] = [:]
+    @State private var dragAnchorID: String?
+
     private let spacing: CGFloat = 10
+    private static let gridSpace = "lightTableGrid"
 
     var body: some View {
         GeometryReader { geo in
@@ -43,6 +50,9 @@ struct LightTableView: View {
                         }
                         .padding(spacing)
                     }
+                    .coordinateSpace(name: Self.gridSpace)
+                    .onPreferenceChange(CellFramesKey.self) { cellFrames = $0 }
+                    .gesture(dragSelectGesture)
                 }
                 .background {
                     // Covers the area below the last row, which the ZStack above
@@ -86,6 +96,24 @@ struct LightTableView: View {
     private var currentEvent: LightTableEvent? {
         guard case .event(let id) = app.selection else { return nil }
         return events.first { $0.persistentModelID == id }
+    }
+
+    /// Click a photo and slide across neighbours to select the run, the way
+    /// Photos does. A minimum distance keeps ordinary clicks working.
+    private var dragSelectGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.gridSpace))
+            .onChanged { value in
+                isGridFocused = true
+                let anchor = dragAnchorID ?? item(at: value.startLocation)
+                dragAnchorID = anchor
+                guard let anchor, let target = item(at: value.location) else { return }
+                app.selectRange(from: anchor, to: target, in: items)
+            }
+            .onEnded { _ in dragAnchorID = nil }
+    }
+
+    private func item(at point: CGPoint) -> String? {
+        cellFrames.first { $0.value.contains(point) }?.key
     }
 
     private func clearSelection() {
@@ -135,6 +163,13 @@ struct LightTableView: View {
                       showsSelectionBadge: app.selectedIDs.count > 1
                           && app.selectedIDs.contains(item.id))
             .id(item.id)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: CellFramesKey.self,
+                        value: [item.id: geo.frame(in: .named(Self.gridSpace))])
+                }
+            )
             .onTapGesture(count: 2) {
                 app.focusID = item.id
                 app.selectedIDs = [item.id]
@@ -293,6 +328,15 @@ struct LightTableView: View {
     private func advanceAfterVerdict() {
         guard app.selectedIDs.count <= 1 else { return }
         app.move(by: 1, in: items, extendSelection: false)
+    }
+}
+
+/// Collects cell frames so a drag can tell which photo it is over.
+struct CellFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }
 #endif

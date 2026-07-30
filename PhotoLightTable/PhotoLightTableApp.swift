@@ -8,7 +8,7 @@ struct PhotoLightTableApp: App {
     @StateObject private var app = AppModel()
     @StateObject private var syncer: AlbumSyncer
     @StateObject private var ratings: RatingStore
-    @AppStorage(PreferenceKey.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
+    @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
         let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self])
