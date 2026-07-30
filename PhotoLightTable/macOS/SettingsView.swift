@@ -23,8 +23,30 @@ private struct AppearanceSettings: View {
         )
     }
 
+    @AppStorage(PreferenceKey.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
+
+    private var appearance: Binding<AppearancePreference> {
+        Binding(
+            get: { AppearancePreference(rawValue: appearanceRaw) ?? .system },
+            set: { appearanceRaw = $0.rawValue }
+        )
+    }
+
     var body: some View {
         Form {
+            Section {
+                Picker("Appearance", selection: appearance) {
+                    ForEach(AppearancePreference.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text("Dark keeps the surround out of the way while you judge an image; light is easier in a bright room.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Picker("Thumbnails", selection: fillMode) {
                     ForEach(ThumbnailFillMode.allCases) { mode in

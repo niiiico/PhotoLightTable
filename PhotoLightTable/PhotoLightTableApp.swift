@@ -8,6 +8,7 @@ struct PhotoLightTableApp: App {
     @StateObject private var app = AppModel()
     @StateObject private var syncer: AlbumSyncer
     @StateObject private var ratings: RatingStore
+    @AppStorage(PreferenceKey.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
         let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self])
@@ -39,6 +40,8 @@ struct PhotoLightTableApp: App {
     var body: some Scene {
         WindowGroup {
             rootView
+                .preferredColorScheme(
+                    (AppearancePreference(rawValue: appearanceRaw) ?? .system).colorScheme)
                 .environmentObject(library)
                 .environmentObject(app)
                 .environmentObject(ratings)

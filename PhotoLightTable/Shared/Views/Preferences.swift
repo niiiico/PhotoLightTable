@@ -34,9 +34,33 @@ enum ThumbnailFillMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppearancePreference: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    /// Nil hands the decision back to the system setting.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 enum PreferenceKey {
     static let thumbnailFillMode = "thumbnailFillMode"
     static let loupeFields = "loupeMetadataFields"
+    static let appearance = "appearance"
 }
 
 /// Which EXIF fields the loupe shows, stored as a comma-separated list of raw
