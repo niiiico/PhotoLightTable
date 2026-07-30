@@ -58,6 +58,9 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     @Published private(set) var authState: AuthState = .undetermined
     @Published private(set) var items: [PhotoItem] = []
     @Published private(set) var isLoading = false
+    /// Bumped on each successful reload, so derived state can be invalidated
+    /// without comparing the whole array.
+    @Published private(set) var version = 0
 
     /// Fires on any photo-library change, including ones that only touch albums.
     var onLibraryChange: (() -> Void)?
@@ -124,6 +127,7 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         }.value
 
         items = snapshot
+        version &+= 1
     }
 
     // MARK: - Grouping

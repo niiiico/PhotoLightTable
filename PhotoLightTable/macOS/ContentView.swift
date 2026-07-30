@@ -14,9 +14,18 @@ struct ContentView: View {
     @State private var editorMode: EventEditor.Mode?
     @State private var showsShortcuts = false
     @State private var pendingImport: PhotosImport?
+    @StateObject private var projection = LibraryProjection()
 
     var body: some View {
-        NavigationSplitView {
+        // Recomputed only when something it actually depends on moves — notably
+        // not the selection, which changes on every step of a drag.
+        projection.refresh(items: library.items,
+                           libraryVersion: library.version,
+                           events: events,
+                           app: app,
+                           ratings: ratings)
+
+        return NavigationSplitView {
             SidebarView(events: events,
                         allItems: library.items,
                         editingEvent: Binding(
@@ -103,13 +112,9 @@ struct ContentView: View {
 
     /// Everything in the current sidebar selection, before any filter — this is
     /// what the tally describes.
-    private var scopedItems: [PhotoItem] {
-        app.scope(library.items, events: events)
-    }
+    private var scopedItems: [PhotoItem] { projection.scoped }
 
-    private var visibleItems: [PhotoItem] {
-        app.sort(app.filter(scopedItems, ratings: ratings))
-    }
+    private var visibleItems: [PhotoItem] { projection.visible }
 
     private var title: String {
         switch app.selection {
@@ -138,7 +143,7 @@ struct ContentView: View {
         // Kept as one item so the group can't be split apart or reordered when
         // the toolbar overflows.
         ToolbarItem(placement: .navigation) {
-            let tally = ScopeTally(items: scopedItems, ratings: ratings)
+            let tally = projection.tally
             HStack(spacing: 10) {
                 Text("\(tally.total) photo\(tally.total == 1 ? "" : "s")")
                     .font(.callout)

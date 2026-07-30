@@ -9,6 +9,8 @@ struct ScopeTally {
     var rejected = 0
     var unrated = 0
 
+    init() {}
+
     @MainActor
     init(items: [PhotoItem], ratings: RatingStore) {
         total = items.count

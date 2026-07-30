@@ -23,6 +23,7 @@ struct LightTableView: View {
     /// The selection as it stood when the current drag began, kept so a
     /// Command-drag can add to it without swallowing it.
     @State private var dragBaseSelection: Set<String>?
+    @State private var dragLastTargetID: String?
 
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
@@ -122,12 +123,18 @@ struct LightTableView: View {
 
                 guard let anchor = dragAnchorID,
                       let target = item(at: value.location) else { return }
+                // The pointer moves far more often than it crosses into a new
+                // cell; recomputing the range on every point would rebuild the
+                // selection set — and re-render the grid — for no change.
+                guard target != dragLastTargetID else { return }
+                dragLastTargetID = target
                 app.selectRange(from: anchor, to: target, in: items,
                                 addingTo: dragBaseSelection)
             }
             .onEnded { _ in
                 dragAnchorID = nil
                 dragBaseSelection = nil
+                dragLastTargetID = nil
             }
     }
 
