@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct PhotoLightTableApp: App {
     private let container: ModelContainer
-    @StateObject private var library = PhotoLibraryService()
+    @StateObject private var library: PhotoLibraryService
     @StateObject private var app = AppModel()
     @StateObject private var syncer: AlbumSyncer
     @StateObject private var ratings: RatingStore
@@ -23,9 +23,15 @@ struct PhotoLightTableApp: App {
         // Bound to locals so the StateObject autoclosures don't capture `self`
         // while it is still being initialised.
         let syncer = AlbumSyncer()
-        let context = container.mainContext
+        let library = PhotoLibraryService()
+        let ratings = RatingStore(context: container.mainContext, syncer: syncer)
+        // A class reference, so the store always reads the current library
+        // rather than a snapshot taken at launch.
+        ratings.itemsProvider = { [weak library] in library?.items ?? [] }
+
         _syncer = StateObject(wrappedValue: syncer)
-        _ratings = StateObject(wrappedValue: RatingStore(context: context, syncer: syncer))
+        _library = StateObject(wrappedValue: library)
+        _ratings = StateObject(wrappedValue: ratings)
     }
 
     var body: some Scene {

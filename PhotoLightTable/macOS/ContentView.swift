@@ -64,8 +64,11 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.12), value: app.isLoupePresented)
         .sheet(isPresented: $showsShortcuts) { ShortcutsHelp() }
         .task {
-            ratings.eventPlanProvider = eventPlans
             await library.requestAccess()
+            // Reconcile once at startup. Without this, sync only ever runs off
+            // an edit, so anything that drifted while the app was closed — or a
+            // previous bad write — stays wrong until you happen to rate a photo.
+            ratings.scheduleSync()
         }
         // Event albums depend on both ratings and membership, so rebuild the
         // plans whenever either could have moved. The syncer debounces.
@@ -235,50 +238,6 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
-
-    /// Builds a plan per opted-in event. Registered as a provider rather than
-    /// pushed, because a rating change also has to re-sync the event albums and
-    /// only this layer knows about events.
-    private func eventPlans() -> [EventAlbumPlan] {
-        let picked = ratings.assetIDs(matching: .picked)
-        return events.filter(\.isSyncedToPhotos).map { event -> EventAlbumPlan in
-            let key = "event.\(event.persistentModelID.hashValue)"
-            let members = EventMembership.members(of: event, in: library.items)
-            let memberIDs = Set(members.map(\.id))
-            return EventAlbumPlan(
-                key: key,
-                name: event.name,
-                allIDs: memberIDs,
-                pickedIDs: memberIDs.intersection(picked),
-                allBaseline: ratings.baseline("\(key).all"),
-                pickedBaseline: ratings.baseline("\(key).picked"),
-                folderID: event.photosFolderID,
-                albumID: event.photosAlbumID,
-                pickedAlbumID: event.photosPickedAlbumID,
-                persistIdentifiers: { folderID, albumID, pickedAlbumID in
-                    event.photosFolderID = folderID
-                    event.photosAlbumID = albumID
-                    event.photosPickedAlbumID = pickedAlbumID
-                    try? context.save()
-                },
-                applyMembershipDelta: { added, removed in
-                    // Dropping a photo into the event's album in Photos is the
-                    // same statement as "Add to Event" here.
-                    var pinned = Set(event.pinnedAssetIDs)
-                    pinned.formUnion(added)
-                    pinned.subtract(removed)
-                    event.pinnedAssetIDs = Array(pinned)
-
-                    var excluded = Set(event.excludedAssetIDs)
-                    excluded.subtract(added)
-                    if !event.isExplicit { excluded.formUnion(removed) }
-                    event.excludedAssetIDs = Array(excluded)
-
-                    try? context.save()
-                }
-            )
-        }
-    }
 
     private func scheduleEventAlbumSync() {
         ratings.scheduleSync()

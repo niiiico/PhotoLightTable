@@ -23,9 +23,9 @@ final class RatingStore: ObservableObject {
     /// another sync and bounce the same edit back at Photos.
     private var isApplyingRemote = false
 
-    /// Event plans are assembled by the view layer, which knows about events;
-    /// this keeps the most recent set so a rating change can re-sync them too.
-    var eventPlanProvider: (() -> [EventAlbumPlan])?
+    /// Supplies the current library. Set to read from `PhotoLibraryService`,
+    /// which is a reference type, so this always sees live data.
+    var itemsProvider: (() -> [PhotoItem])?
 
     init(context: ModelContext, syncer: AlbumSyncer) {
         self.context = context
@@ -165,7 +165,56 @@ final class RatingStore: ObservableObject {
                      rejected: assetIDs(matching: .rejected),
                      pickedBaseline: baseline(AlbumSyncer.globalPickedKey),
                      rejectedBaseline: baseline(AlbumSyncer.globalRejectedKey),
-                     events: eventPlanProvider?() ?? [])
+                     events: eventPlans())
+    }
+
+    /// Builds a plan per opted-in event.
+    ///
+    /// Events are fetched from this store's own context rather than handed in by
+    /// a view. A SwiftUI `View` is a value recreated on every update, so a
+    /// closure captured from one holds a stale copy of its `@Query` results —
+    /// which silently yields no events, and therefore no event albums.
+    private func eventPlans() -> [EventAlbumPlan] {
+        guard let items = itemsProvider?(),
+              let events = try? context.fetch(FetchDescriptor<LightTableEvent>()) else { return [] }
+
+        let picked = assetIDs(matching: .picked)
+        return events.filter(\.isSyncedToPhotos).map { event in
+            let key = "event.\(event.persistentModelID.hashValue)"
+            let memberIDs = Set(EventMembership.members(of: event, in: items).map(\.id))
+            return EventAlbumPlan(
+                key: key,
+                name: event.name,
+                allIDs: memberIDs,
+                pickedIDs: memberIDs.intersection(picked),
+                allBaseline: baseline("\(key).all"),
+                pickedBaseline: baseline("\(key).picked"),
+                folderID: event.photosFolderID,
+                albumID: event.photosAlbumID,
+                pickedAlbumID: event.photosPickedAlbumID,
+                persistIdentifiers: { [weak self] folderID, albumID, pickedAlbumID in
+                    event.photosFolderID = folderID
+                    event.photosAlbumID = albumID
+                    event.photosPickedAlbumID = pickedAlbumID
+                    self?.persist()
+                },
+                applyMembershipDelta: { [weak self] added, removed in
+                    // Dropping a photo into the event's album in Photos is the
+                    // same statement as "Add to Event" here.
+                    var pinned = Set(event.pinnedAssetIDs)
+                    pinned.formUnion(added)
+                    pinned.subtract(removed)
+                    event.pinnedAssetIDs = Array(pinned)
+
+                    var excluded = Set(event.excludedAssetIDs)
+                    excluded.subtract(added)
+                    if !event.isExplicit { excluded.formUnion(removed) }
+                    event.excludedAssetIDs = Array(excluded)
+
+                    self?.persist()
+                }
+            )
+        }
     }
 
     private func persist() {
