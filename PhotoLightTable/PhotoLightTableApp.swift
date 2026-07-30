@@ -28,6 +28,8 @@ struct PhotoLightTableApp: App {
         // A class reference, so the store always reads the current library
         // rather than a snapshot taken at launch.
         ratings.itemsProvider = { [weak library] in library?.items ?? [] }
+        // Edits made in Photos only reach the store if something notices them.
+        library.onLibraryChange = { [weak ratings] in ratings?.scheduleSync() }
 
         _syncer = StateObject(wrappedValue: syncer)
         _library = StateObject(wrappedValue: library)

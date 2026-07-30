@@ -59,6 +59,9 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     @Published private(set) var items: [PhotoItem] = []
     @Published private(set) var isLoading = false
 
+    /// Fires on any photo-library change, including ones that only touch albums.
+    var onLibraryChange: (() -> Void)?
+
     private var fetchResult: PHFetchResult<PHAsset>?
     private var isObserving = false
 
@@ -146,13 +149,25 @@ final class PhotoLibraryService: NSObject, ObservableObject {
 extension PhotoLibraryService: PHPhotoLibraryChangeObserver {
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
         Task { @MainActor in
-            guard let current = fetchResult,
-                  let details = changeInstance.changeDetails(for: current) else { return }
-            // Only a structural change needs a re-snapshot; our own favourite or
-            // album writes come back as object changes we can ignore.
-            if details.hasIncrementalChanges || details.fetchResultAfterChanges.count != current.count {
-                await reload()
+            if let current = fetchResult,
+               let details = changeInstance.changeDetails(for: current) {
+                fetchResult = details.fetchResultAfterChanges
+
+                // Only assets appearing or disappearing needs a re-snapshot.
+                // Photos fires change notifications constantly — analysis,
+                // iCloud, and our own album writes — and the previous condition
+                // was true for nearly all of them, so a 75k-asset library was
+                // re-snapshotted every few seconds, several seconds at a time.
+                let isStructural = details.hasIncrementalChanges
+                    ? !(details.insertedObjects.isEmpty && details.removedObjects.isEmpty)
+                    : true
+                if isStructural { await reload() }
             }
+
+            // Album membership changes without touching the asset fetch at all,
+            // so this fires on every notification. It is what lets an edit made
+            // in Photos find its way back into the store.
+            onLibraryChange?()
         }
     }
 }

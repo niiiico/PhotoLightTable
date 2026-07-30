@@ -92,6 +92,8 @@ final class AlbumSyncer: ObservableObject {
     private let debounce: Duration = .seconds(2)
     private var pendingTask: Task<Void, Never>?
     private var snapshot = SyncSnapshot()
+    private var isReconciling = false
+    private var needsAnotherPass = false
 
     init() {
         if UserDefaults.standard.object(forKey: Self.enabledKey) != nil {
@@ -104,6 +106,10 @@ final class AlbumSyncer: ObservableObject {
     func schedule(_ snapshot: SyncSnapshot) {
         self.snapshot = snapshot
         guard isEnabled else { return }
+        // Cancelling a running reconcile would abort it between two albums,
+        // leaving a baseline recorded for one and not the other. Queue instead.
+        guard !isReconciling else { needsAnotherPass = true; return }
+
         pendingTask?.cancel()
         status = .pending
         pendingTask = Task { [debounce] in
@@ -115,6 +121,7 @@ final class AlbumSyncer: ObservableObject {
 
     func syncNow(_ snapshot: SyncSnapshot) {
         self.snapshot = snapshot
+        guard !isReconciling else { needsAnotherPass = true; return }
         pendingTask?.cancel()
         pendingTask = Task { await self.reconcileAll() }
     }
@@ -123,6 +130,15 @@ final class AlbumSyncer: ObservableObject {
 
     private func reconcileAll() async {
         status = .syncing
+        isReconciling = true
+        defer {
+            isReconciling = false
+            // A change that arrived mid-pass was deferred rather than dropped.
+            if needsAnotherPass {
+                needsAnotherPass = false
+                schedule(snapshot)
+            }
+        }
         var delta = RemoteRatingDelta()
 
         do {
