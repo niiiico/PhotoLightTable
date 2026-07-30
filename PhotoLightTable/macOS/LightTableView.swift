@@ -6,6 +6,7 @@ import SwiftUI
 /// The light table proper: a day-sectioned grid with keyboard-driven culling.
 struct LightTableView: View {
     let items: [PhotoItem]
+    let sections: [DaySection]
     let events: [LightTableEvent]
     /// Opens the event editor seeded with the given photos.
     let onNewEvent: ([String]) -> Void
@@ -88,10 +89,6 @@ struct LightTableView: View {
     }
 
     // MARK: - Pieces
-
-    private var sections: [DaySection] {
-        PhotoLibraryService.groupByDay(items, oldestFirst: app.sortOrder == .oldestFirst)
-    }
 
     private var sortedEvents: [LightTableEvent] {
         events.sorted { $0.startDate > $1.startDate }
@@ -197,6 +194,7 @@ struct LightTableView: View {
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: app.selectedIDs.count > 1
                           && app.selectedIDs.contains(item.id))
+            .equatable()
             .id(item.id)
             .background(
                 GeometryReader { geo in

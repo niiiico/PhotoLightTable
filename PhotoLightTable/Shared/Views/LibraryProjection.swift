@@ -23,6 +23,9 @@ final class LibraryProjection: ObservableObject {
     private(set) var scoped: [PhotoItem] = []
     private(set) var visible: [PhotoItem] = []
     private(set) var tally = ScopeTally()
+    /// Day grouping is O(n log n) over the visible set; it belongs here rather
+    /// than in a view body that runs on every selection change.
+    private(set) var sections: [DaySection] = []
 
     private var key: Key?
 
@@ -44,6 +47,8 @@ final class LibraryProjection: ObservableObject {
         scoped = app.scope(items, events: events)
         visible = app.sort(app.filter(scoped, ratings: ratings))
         tally = ScopeTally(items: scoped, ratings: ratings)
+        sections = PhotoLibraryService.groupByDay(visible,
+                                                  oldestFirst: app.sortOrder == .oldestFirst)
     }
 
     /// Cheap structural summary of the events, so edits to a date range or to

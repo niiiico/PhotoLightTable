@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ThumbnailCell: View {
+struct ThumbnailCell: View, Equatable {
     let item: PhotoItem
     let size: CGFloat
     let rating: RatingValue
@@ -142,5 +142,17 @@ struct ThumbnailCell: View {
         if isFocused { return 2.5 }
         if isSelected { return 2 }
         return 1
+    }
+
+    /// Selecting one photo re-renders the parent, which hands every visible cell
+    /// a fresh value. Without this, all of them rebuild — including decoding
+    /// their image view — when only one changed.
+    static func == (lhs: ThumbnailCell, rhs: ThumbnailCell) -> Bool {
+        lhs.item.id == rhs.item.id
+            && lhs.size == rhs.size
+            && lhs.rating == rhs.rating
+            && lhs.isSelected == rhs.isSelected
+            && lhs.isFocused == rhs.isFocused
+            && lhs.showsSelectionBadge == rhs.showsSelectionBadge
     }
 }

@@ -47,6 +47,7 @@ struct ContentView: View {
                         ProgressView("Loading library…")
                     } else {
                         LightTableView(items: visibleItems,
+                                       sections: projection.sections,
                                        events: events,
                                        onNewEvent: { editorMode = .create(seedIDs: $0) })
                     }
