@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -19,6 +20,9 @@ struct LightTableView: View {
     /// stays small however large the library is.
     @State private var cellFrames: [String: CGRect] = [:]
     @State private var dragAnchorID: String?
+    /// The selection as it stood when the current drag began, kept so a
+    /// Command-drag can add to it without swallowing it.
+    @State private var dragBaseSelection: Set<String>?
 
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
@@ -99,17 +103,41 @@ struct LightTableView: View {
     }
 
     /// Click a photo and slide across neighbours to select the run, the way
-    /// Photos does. A minimum distance keeps ordinary clicks working.
+    /// Photos does. Hold Command to add that run to what's already selected.
+    /// A minimum distance keeps ordinary clicks working.
     private var dragSelectGesture: some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.gridSpace))
             .onChanged { value in
                 isGridFocused = true
-                let anchor = dragAnchorID ?? item(at: value.startLocation)
-                dragAnchorID = anchor
-                guard let anchor, let target = item(at: value.location) else { return }
-                app.selectRange(from: anchor, to: target, in: items)
+
+                if dragAnchorID == nil {
+                    dragAnchorID = item(at: value.startLocation)
+                    // SwiftUI's drag value carries no modifier flags, so the
+                    // keyboard is read directly — and only at the start, so
+                    // pressing Command mid-drag doesn't change the rules
+                    // underneath the gesture.
+                    dragBaseSelection = NSEvent.modifierFlags.contains(.command)
+                        ? app.selectedIDs : nil
+                }
+
+                guard let anchor = dragAnchorID,
+                      let target = item(at: value.location) else { return }
+                app.selectRange(from: anchor, to: target, in: items,
+                                addingTo: dragBaseSelection)
             }
-            .onEnded { _ in dragAnchorID = nil }
+            .onEnded { _ in
+                dragAnchorID = nil
+                dragBaseSelection = nil
+            }
+    }
+
+    /// SwiftUI taps don't report modifier flags, so read them from AppKit.
+    private static func currentModifiers() -> EventModifiers {
+        let flags = NSEvent.modifierFlags
+        var modifiers: EventModifiers = []
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        return modifiers
     }
 
     private func item(at point: CGPoint) -> String? {
@@ -175,16 +203,12 @@ struct LightTableView: View {
                 app.selectedIDs = [item.id]
                 app.isLoupePresented = true
             }
-            .simultaneousGesture(TapGesture().modifiers(.command).onEnded {
-                app.click(item, in: items, modifiers: .command)
-                isGridFocused = true
-            })
-            .simultaneousGesture(TapGesture().modifiers(.shift).onEnded {
-                app.click(item, in: items, modifiers: .shift)
-                isGridFocused = true
-            })
+            // One tap handler that reads the keyboard itself. Separate
+            // modifier-qualified TapGestures also fire the unqualified one, so a
+            // Command-click toggled the photo and was then immediately replaced
+            // by a plain click on the same photo.
             .onTapGesture {
-                app.click(item, in: items, modifiers: [])
+                app.click(item, in: items, modifiers: Self.currentModifiers())
                 isGridFocused = true
             }
             .contextMenu { contextMenu(for: item) }

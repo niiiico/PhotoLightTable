@@ -307,6 +307,8 @@ struct ShortcutsHelp: View {
         ("+ −", "Loupe: zoom in / out"),
         ("← → ↑ ↓", "Move between photos"),
         ("⇧ + arrows", "Extend selection"),
+        ("Drag", "Select a run of photos"),
+        ("⌘ + click / drag", "Add to the selection"),
         ("Space / Return", "Open or close the loupe"),
         ("⌘A", "Select all"),
         ("Esc", "Clear selection"),

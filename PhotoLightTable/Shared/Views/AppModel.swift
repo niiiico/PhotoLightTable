@@ -165,11 +165,21 @@ final class AppModel: ObservableObject {
 
     /// Selects everything between two photos in display order, as dragging
     /// across the grid does.
-    func selectRange(from anchorID: String, to targetID: String, in items: [PhotoItem]) {
+    ///
+    /// `addingTo` is the selection as it stood when the drag began. Unioning
+    /// against that rather than against the live selection means shrinking the
+    /// drag back releases photos again, instead of the run only ever growing.
+    func selectRange(from anchorID: String,
+                     to targetID: String,
+                     in items: [PhotoItem],
+                     addingTo base: Set<String>? = nil) {
         guard let from = items.firstIndex(where: { $0.id == anchorID }),
               let to = items.firstIndex(where: { $0.id == targetID }) else { return }
         let range = from <= to ? from...to : to...from
-        selectedIDs = Set(items[range].map(\.id))
+
+        var ids = Set(items[range].map(\.id))
+        if let base { ids.formUnion(base) }
+        selectedIDs = ids
         focusID = targetID
     }
 
