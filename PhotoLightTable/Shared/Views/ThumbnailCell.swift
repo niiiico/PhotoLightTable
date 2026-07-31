@@ -11,7 +11,6 @@ struct ThumbnailCell: View, Equatable {
     let showsSelectionBadge: Bool
 
     @State private var image: PlatformImage?
-    @StateObject private var loader = ThumbnailLoader.shared
     @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
     private var fillMode: ThumbnailFillMode {
@@ -43,7 +42,10 @@ struct ThumbnailCell: View, Equatable {
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
         .task(id: "\(item.id)#\(fillModeRaw)") {
-            image = await loader.thumbnail(for: item,
+            // Referenced directly rather than held in a @StateObject: the
+            // loader is shared, so wrapping it per cell made every thumbnail
+            // observe it for no benefit.
+            image = await ThumbnailLoader.shared.thumbnail(for: item,
                                            size: CGSize(width: size, height: size),
                                            mode: fillMode)
         }

@@ -46,15 +46,32 @@ enum PhotoSortOrder: String, CaseIterable, Identifiable {
 /// Deliberately separate from `RatingStore`, which owns persisted judgements.
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var selection: LibrarySelection = .allPhotos {
-        didSet {
-            // Each scope carries its own natural order, so a manual override
-            // shouldn't leak across when you switch to a different event.
-            if selection != oldValue { sortOverride = nil }
+    @Published var selection: LibrarySelection = .allPhotos
+
+    /// A manual sort choice, remembered together with the scope it was made in.
+    ///
+    /// Storing the scope alongside it is what lets the override expire on its
+    /// own when you move elsewhere. Clearing it from `selection`'s `didSet`
+    /// instead meant writing one published property while another was being
+    /// written — and since the sidebar's `List(selection:)` writes `selection`
+    /// during a view update, that published from inside the update pass.
+    private struct SortChoice {
+        var scope: LibrarySelection
+        var order: PhotoSortOrder
+    }
+
+    @Published private var sortChoice: SortChoice?
+
+    /// Set only when the user picks an order by hand; otherwise the scope decides.
+    var sortOverride: PhotoSortOrder? {
+        get {
+            guard let sortChoice, sortChoice.scope == selection else { return nil }
+            return sortChoice.order
+        }
+        set {
+            sortChoice = newValue.map { SortChoice(scope: selection, order: $0) }
         }
     }
-    /// Set only when the user picks an order by hand; otherwise the scope decides.
-    @Published var sortOverride: PhotoSortOrder?
     @Published var pickFilter: PickFilter = .all
     @Published var colorFilter: Set<ColorLabel> = []
     @Published var thumbnailSize: Double = 180
