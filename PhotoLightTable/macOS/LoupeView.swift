@@ -13,6 +13,7 @@ struct LoupeView: View {
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
+    @EnvironmentObject private var library: PhotoLibraryService
     @FocusState private var isFocused: Bool
 
     @State private var image: PlatformImage?
@@ -416,8 +417,12 @@ struct LoupeView: View {
     /// and the thumbnail cache behind it — are both stale.
     private func reloadAfterEdit() async {
         guard let current else { return }
-        ThumbnailLoader.shared.forget(current)
-        await loadImage()
+        library.refreshAsset(withID: current.id)
+        // `current` resolves against the items this view was handed, which still
+        // describe the pre-edit asset — the refreshed one has to be taken from
+        // the service directly.
+        let refreshed = library.items.first { $0.id == current.id } ?? current
+        image = await ThumbnailLoader.shared.fullImage(for: refreshed, maxDimension: 2400)
     }
 
     // MARK: - State

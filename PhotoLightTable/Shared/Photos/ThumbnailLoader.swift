@@ -53,6 +53,13 @@ final class ThumbnailLoader: ObservableObject {
             cache.removeObject(forKey: key)
         }
         versions[assetID, default: 0] += 1
+
+        // PhotoKit keeps its own prefetch cache, which would keep serving the
+        // pre-edit rendition however thoroughly ours is cleared. There is no
+        // per-asset eviction, and the prefetch is only an optimisation, so
+        // dropping it wholesale is the honest option; scrolling re-primes it.
+        manager.stopCachingImagesForAllAssets()
+        cachedAssets = []
     }
 
     func version(of assetID: String) -> Int { versions[assetID] ?? 0 }

@@ -134,6 +134,22 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         version &+= 1
     }
 
+    /// Re-reads one asset and replaces its entry.
+    ///
+    /// After editing, the `PHAsset` held in `items` describes the version from
+    /// before the edit, and asking the image manager for a stale asset yields
+    /// the stale image. The change notification would eventually deliver a
+    /// fresh one, but not before the grid has already redrawn.
+    func refreshAsset(withID id: String) {
+        guard let index = indexByID[id],
+              let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+        else { return }
+
+        items[index] = PhotoItem(asset: asset)
+        ThumbnailLoader.shared.forget(assetID: id)
+        version &+= 1
+    }
+
     private func apply(changed assets: [PHAsset]) {
         guard !assets.isEmpty else { return }
         var touched = false
