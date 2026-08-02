@@ -16,6 +16,7 @@ struct LightTableView: View {
     /// Observed so a changed asset's version reaches the cell that shows it.
     @ObservedObject private var loader = ThumbnailLoader.shared
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var clipboard: EditClipboard
     @FocusState private var isGridFocused: Bool
 
     /// Frames of the cells currently laid out, used to find what the pointer is
@@ -141,6 +142,17 @@ struct LightTableView: View {
             }
     }
 
+    private func photoItems(for ids: [String]) -> [PhotoItem] {
+        let wanted = Set(ids)
+        return items.filter { wanted.contains($0.id) }
+    }
+
+    private func pasteTitle(_ targets: [String], includingCrop: Bool) -> String {
+        let noun = targets.count == 1 ? "Photo" : "\(targets.count) Photos"
+        return includingCrop ? "Paste Adjustments and Crop to \(noun)"
+                             : "Paste Adjustments to \(noun)"
+    }
+
     /// SwiftUI taps don't report modifier flags, so read them from AppKit.
     private static func currentModifiers() -> EventModifiers {
         let flags = NSEvent.modifierFlags
@@ -255,6 +267,19 @@ struct LightTableView: View {
         }
         if let current = currentEvent {
             Button("Remove from “\(current.name)”") { remove(targets, from: current) }
+        }
+        Divider()
+        Button("Copy Adjustments") {
+            Task { await clipboard.copy(from: item) }
+        }
+        if clipboard.hasContents {
+            Button(pasteTitle(targets, includingCrop: false)) {
+                Task { await clipboard.paste(to: photoItems(for: targets), includingCrop: false) }
+            }
+            Button(pasteTitle(targets, includingCrop: true)) {
+                Task { await clipboard.paste(to: photoItems(for: targets), includingCrop: true) }
+            }
+            .help("Also applies the copied crop, which is rarely right across different compositions")
         }
         Divider()
         Menu("Select Related") {

@@ -302,22 +302,7 @@ final class PhotoEditSession: ObservableObject {
         canEdit = item.asset.canPerform(.content)
         guard canEdit else { return }
 
-        let options = PHContentEditingInputRequestOptions()
-        options.isNetworkAccessAllowed = true
-        // Claiming our own adjustment data is what makes re-editing
-        // non-destructive: PhotoKit then hands back the *original* image along
-        // with the previous recipe, instead of an image with the last edit
-        // already baked in. Returning false here would compound edits.
-        options.canHandleAdjustmentData = { data in
-            data.formatIdentifier == Self.formatIdentifier
-                && Self.readableFormatVersions.contains(data.formatVersion)
-        }
-
-        let loaded: PHContentEditingInput? = await withCheckedContinuation { continuation in
-            item.asset.requestContentEditingInput(with: options) { input, _ in
-                continuation.resume(returning: input)
-            }
-        }
+        let loaded = await Self.loadInput(for: item.asset)
         guard let loaded else {
             errorMessage = PhotoEditError.couldNotOpen.localizedDescription
             return
@@ -363,19 +348,64 @@ final class PhotoEditSession: ObservableObject {
 
     func commit(for item: PhotoItem) async throws {
         guard let input else { throw PhotoEditError.couldNotOpen }
-        guard let sourceURL = input.fullSizeImageURL else { throw PhotoEditError.couldNotOpen }
 
         isCommitting = true
         defer { isCommitting = false }
-        editLog("commit: begin ev=\(recipe.exposure) orientation=\(input.fullSizeImageOrientation) source=\(sourceURL.lastPathComponent)")
+
+        try await Self.write(recipe, using: input, to: item.asset)
+        loadedRecipe = recipe
+        hasExistingEdit = true
+        record(recipe, for: item)
+    }
+
+    // MARK: - Applying without a session
+
+    /// Options that claim our own adjustment data.
+    ///
+    /// This is what makes re-editing non-destructive: PhotoKit hands back the
+    /// *original* image along with the previous recipe, instead of an image with
+    /// the last edit already baked in. Returning false would compound edits.
+    static func inputOptions() -> PHContentEditingInputRequestOptions {
+        let options = PHContentEditingInputRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.canHandleAdjustmentData = { data in
+            data.formatIdentifier == formatIdentifier
+                && readableFormatVersions.contains(data.formatVersion)
+        }
+        return options
+    }
+
+    static func loadInput(for asset: PHAsset) async -> PHContentEditingInput? {
+        await withCheckedContinuation { continuation in
+            asset.requestContentEditingInput(with: inputOptions()) { input, _ in
+                continuation.resume(returning: input)
+            }
+        }
+    }
+
+    /// Reads whatever recipe a photo currently carries, if this app wrote it.
+    static func recipe(of asset: PHAsset) async -> PhotoEditRecipe? {
+        guard let input = await loadInput(for: asset) else { return nil }
+        return decode(input.adjustmentData)
+    }
+
+    /// Renders a recipe at full resolution and commits it.
+    ///
+    /// Shared by the editing session and by pasting onto a selection, so both
+    /// produce byte-identical results and there is one place where the
+    /// orientation and encoding rules live.
+    static func write(_ recipe: PhotoEditRecipe,
+                      using input: PHContentEditingInput,
+                      to asset: PHAsset) async throws {
+        guard let sourceURL = input.fullSizeImageURL else { throw PhotoEditError.couldNotOpen }
+        editLog("write: begin orientation=\(input.fullSizeImageOrientation) source=\(sourceURL.lastPathComponent)")
 
         let output = PHContentEditingOutput(contentEditingInput: input)
         output.adjustmentData = PHAdjustmentData(
-            formatIdentifier: Self.formatIdentifier,
-            formatVersion: Self.formatVersion,
+            formatIdentifier: formatIdentifier,
+            formatVersion: formatVersion,
             data: try JSONEncoder().encode(recipe))
 
-        let recipe = self.recipe
         let orientation = input.fullSizeImageOrientation
         let destination = output.renderedContentURL
 
@@ -402,16 +432,18 @@ final class PhotoEditSession: ObservableObject {
                 colorSpace: edited.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
                 options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.95])
         }.value
-        editLog("commit: rendered to \(destination.lastPathComponent)")
 
         try await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest(for: item.asset).contentEditingOutput = output
+            PHAssetChangeRequest(for: asset).contentEditingOutput = output
         }
+        editLog("write: committed")
+    }
 
-        editLog("commit: committed ev=\(recipe.exposure)")
-        loadedRecipe = recipe
-        hasExistingEdit = true
-        record(recipe, for: item)
+    /// Loads, renders and commits in one call, for photos with no open session.
+    static func apply(_ recipe: PhotoEditRecipe, to asset: PHAsset) async throws {
+        guard asset.canPerform(.content) else { throw PhotoEditError.notEditable }
+        guard let input = await loadInput(for: asset) else { throw PhotoEditError.couldNotOpen }
+        try await write(recipe, using: input, to: asset)
     }
 
     /// Photos keeps the original, so this is a true revert rather than an
@@ -471,7 +503,7 @@ final class PhotoEditSession: ObservableObject {
 
     // MARK: - Adjustment data
 
-    private static func decode(_ data: PHAdjustmentData?) -> PhotoEditRecipe? {
+    static func decode(_ data: PHAdjustmentData?) -> PhotoEditRecipe? {
         guard let data,
               data.formatIdentifier == formatIdentifier,
               readableFormatVersions.contains(data.formatVersion) else { return nil }

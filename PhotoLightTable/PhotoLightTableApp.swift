@@ -8,6 +8,7 @@ struct PhotoLightTableApp: App {
     @StateObject private var app = AppModel()
     @StateObject private var syncer: AlbumSyncer
     @StateObject private var ratings: RatingStore
+    @StateObject private var clipboard: EditClipboard
     @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
@@ -32,6 +33,11 @@ struct PhotoLightTableApp: App {
         // Edits made in Photos only reach the store if something notices them.
         library.onLibraryChange = { [weak ratings] in ratings?.scheduleSync() }
 
+        let clipboard = EditClipboard()
+        clipboard.library = library
+        clipboard.modelContext = container.mainContext
+
+        _clipboard = StateObject(wrappedValue: clipboard)
         _syncer = StateObject(wrappedValue: syncer)
         _library = StateObject(wrappedValue: library)
         _ratings = StateObject(wrappedValue: ratings)
@@ -46,6 +52,7 @@ struct PhotoLightTableApp: App {
                 .environmentObject(app)
                 .environmentObject(ratings)
                 .environmentObject(syncer)
+                .environmentObject(clipboard)
         }
         .modelContainer(container)
         #if os(macOS)

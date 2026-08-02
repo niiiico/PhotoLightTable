@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
     @EnvironmentObject private var syncer: AlbumSyncer
+    @EnvironmentObject private var clipboard: EditClipboard
     @Environment(\.modelContext) private var context
 
     @Query private var events: [LightTableEvent]
@@ -191,6 +192,27 @@ struct ContentView: View {
             }
             .frame(width: 120)
             .help("Thumbnail size")
+        }
+
+        ToolbarItem {
+            if let progress = clipboard.progressDescription {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(progress)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+            } else if let message = clipboard.errorMessage {
+                Button {
+                    clipboard.errorMessage = nil
+                } label: {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .tint(.orange)
+                .help(message)
+            }
         }
 
         ToolbarItem {
