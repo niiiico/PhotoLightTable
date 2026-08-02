@@ -172,8 +172,13 @@ final class MetadataLoader: ObservableObject {
         options.isNetworkAccessAllowed = true
 
         let url: URL? = await withCheckedContinuation { continuation in
-            asset.requestContentEditingInput(with: options) { input, _ in
-                continuation.resume(returning: input?.fullSizeImageURL)
+            // Off the main queue: this faults PHAssetAdjustmentProperties on the
+            // calling thread, and the loupe asks for metadata on every photo it
+            // shows — so on the main queue it would fault once per frame viewed.
+            DispatchQueue.global(qos: .userInitiated).async {
+                asset.requestContentEditingInput(with: options) { input, _ in
+                    continuation.resume(returning: input?.fullSizeImageURL)
+                }
             }
         }
         guard let url else { return .empty }

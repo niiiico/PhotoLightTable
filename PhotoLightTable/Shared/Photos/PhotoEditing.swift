@@ -675,9 +675,16 @@ final class PhotoEditSession: ObservableObject {
     }
 
     static func loadInput(for asset: PHAsset) async -> PHContentEditingInput? {
-        await withCheckedContinuation { continuation in
-            asset.requestContentEditingInput(with: inputOptions()) { input, _ in
-                continuation.resume(returning: input)
+        let options = inputOptions()
+        return await withCheckedContinuation { continuation in
+            // Requested off the main queue: the call faults
+            // PHAssetAdjustmentProperties synchronously on whichever thread
+            // makes it, and PhotoKit warns when that is the main one. There is
+            // no fetch option to prefetch them.
+            DispatchQueue.global(qos: .userInitiated).async {
+                asset.requestContentEditingInput(with: options) { input, _ in
+                    continuation.resume(returning: input)
+                }
             }
         }
     }
