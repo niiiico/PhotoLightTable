@@ -25,6 +25,7 @@ struct LoupeView: View {
     @StateObject private var edit = PhotoEditSession()
     @State private var isEditing = false
     @State private var showsHistory = false
+    @State private var editError: String?
     @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
@@ -289,8 +290,11 @@ struct LoupeView: View {
             if edit.hasExistingEdit {
                 Button("Revert to Original") {
                     Task {
-                        try? await edit.revert(for: current!)
-                        await reloadAfterEdit()
+                        guard let current else { return }
+                        do {
+                            try await edit.revert(for: current)
+                            await reloadAfterEdit()
+                        } catch { editError = error.localizedDescription }
                     }
                 }
                 .help("Discards every edit, including ones made in other apps")
@@ -312,15 +316,29 @@ struct LoupeView: View {
             Button("Apply") {
                 Task {
                     guard let current else { return }
-                    try? await edit.commit(for: current)
-                    await reloadAfterEdit()
-                    endEditing()
+                    do {
+                        try await edit.commit(for: current)
+                        await reloadAfterEdit()
+                        // The panel stays open with the applied value in place:
+                        // closing it and zeroing the slider reads as the edit
+                        // having been discarded.
+                    } catch {
+                        editLog("commit: FAILED \(error)")
+                        editError = error.localizedDescription
+                    }
                 }
             }
             .keyboardShortcut(.defaultAction)
             .disabled(!edit.isDirty || edit.isCommitting)
 
             if edit.isCommitting { ProgressView().controlSize(.small) }
+
+            if let editError {
+                Label(editError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -410,6 +428,7 @@ struct LoupeView: View {
 
     private func endEditing() {
         isEditing = false
+        editError = nil
         edit.cancel()
     }
 

@@ -1,5 +1,6 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import ImageIO
 import Foundation
 import Photos
 import SwiftData
@@ -44,6 +45,24 @@ enum PhotoEditError: LocalizedError {
         }
     }
 }
+
+#if DEBUG
+/// Appends to ~/Library/Containers/<app>/Data/edit.log.
+func editLog(_ message: String) {
+    let path = NSHomeDirectory() + "/edit.log"
+    let line = "\(Date().formatted(date: .numeric, time: .standard))  \(message)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    if !FileManager.default.fileExists(atPath: path) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+    }
+    guard let handle = FileHandle(forWritingAtPath: path) else { return }
+    defer { try? handle.close() }
+    _ = try? handle.seekToEnd()
+    try? handle.write(contentsOf: data)
+}
+#else
+func editLog(_ message: String) {}
+#endif
 
 /// One photo's editing session: loads it, previews changes, commits them back.
 @MainActor
@@ -107,6 +126,7 @@ final class PhotoEditSession: ObservableObject {
         }
 
         input = loaded
+        editLog("begin: canEdit=\(canEdit) hasAdjustments=\(loaded.adjustmentData != nil) fullSizeURL=\(loaded.fullSizeImageURL != nil)")
         hasExistingEdit = loaded.adjustmentData != nil
         loadedRecipe = Self.decode(loaded.adjustmentData) ?? .neutral
         recipe = loadedRecipe
@@ -149,6 +169,7 @@ final class PhotoEditSession: ObservableObject {
 
         isCommitting = true
         defer { isCommitting = false }
+        editLog("commit: begin ev=\(recipe.exposure) orientation=\(input.fullSizeImageOrientation) source=\(sourceURL.lastPathComponent)")
 
         let output = PHContentEditingOutput(contentEditingInput: input)
         output.adjustmentData = PHAdjustmentData(
@@ -166,7 +187,16 @@ final class PhotoEditSession: ObservableObject {
             guard let base = CIImage(contentsOf: sourceURL) else {
                 throw PhotoEditError.couldNotRender
             }
-            let edited = recipe.apply(to: base.oriented(forExifOrientation: orientation))
+            let oriented = base.oriented(forExifOrientation: orientation)
+
+            // Orienting bakes the rotation into the pixels, but the metadata
+            // carried over from the source still declares the original
+            // orientation — so the file says "rotate me" over pixels that are
+            // already rotated. Photos validates the render and rejects anything
+            // not in up orientation with PHPhotosErrorInvalidResource (3302).
+            var properties = oriented.properties
+            properties[kCGImagePropertyOrientation as String] = CGImagePropertyOrientation.up.rawValue
+            let edited = recipe.apply(to: oriented.settingProperties(properties))
             let context = CIContext()
             try context.writeJPEGRepresentation(
                 of: edited,
@@ -174,11 +204,13 @@ final class PhotoEditSession: ObservableObject {
                 colorSpace: edited.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
                 options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.95])
         }.value
+        editLog("commit: rendered to \(destination.lastPathComponent)")
 
         try await PHPhotoLibrary.shared().performChanges {
             PHAssetChangeRequest(for: item.asset).contentEditingOutput = output
         }
 
+        editLog("commit: committed ev=\(recipe.exposure)")
         loadedRecipe = recipe
         hasExistingEdit = true
         record(recipe, for: item)
