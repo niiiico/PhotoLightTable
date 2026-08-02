@@ -84,6 +84,13 @@ final class LightTableEvent {
     /// existing store. Read it through `isExplicit`.
     var explicitMembership: Bool?
 
+    /// Stable identity for keys that must survive relaunches.
+    ///
+    /// `persistentModelID.hashValue` cannot be used for this: Swift seeds its
+    /// hasher per process, so that value changes on every launch. Baselines
+    /// keyed by it were orphaned each time the app started.
+    var eventKey: String?
+
     /// Mirror this event into a folder of albums in Photos.
     var syncsToPhotos: Bool?
     /// Identifiers of the Photos collections we created, so a renamed event
@@ -112,6 +119,14 @@ final class LightTableEvent {
     var isExplicit: Bool { explicitMembership ?? false }
 
     var isSyncedToPhotos: Bool { syncsToPhotos ?? false }
+
+    /// Assigns a key on first use, for events created before this existed.
+    var stableKey: String {
+        if let eventKey { return eventKey }
+        let generated = UUID().uuidString
+        eventKey = generated
+        return generated
+    }
 
     /// Inclusive of the whole final day, so a range picked as 3–14 Aug covers
     /// everything shot on the 14th rather than stopping at midnight.

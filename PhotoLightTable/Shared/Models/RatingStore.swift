@@ -179,8 +179,10 @@ final class RatingStore: ObservableObject {
               let events = try? context.fetch(FetchDescriptor<LightTableEvent>()) else { return [] }
 
         let picked = assetIDs(matching: .picked)
-        return events.filter(\.isSyncedToPhotos).map { event in
-            let key = "event.\(event.persistentModelID.hashValue)"
+        let synced = events.filter(\.isSyncedToPhotos)
+        pruneBaselines(keeping: synced)
+        return synced.map { event in
+            let key = "event.\(event.stableKey)"
             let memberIDs = Set(EventMembership.members(of: event, in: items).map(\.id))
             return EventAlbumPlan(
                 key: key,
@@ -240,6 +242,25 @@ final class RatingStore: ObservableObject {
     /// Reconciles with Photos immediately, bypassing the debounce.
     func syncNow() {
         syncer.syncNow(snapshot())
+    }
+
+    /// Drops baseline rows that belong to no current event.
+    ///
+    /// Needed once because unstable keys orphaned a set on every launch, and
+    /// worth keeping so deleting an event doesn't leave its baselines behind.
+    private func pruneBaselines(keeping events: [LightTableEvent]) {
+        var live: Set<String> = [AlbumSyncer.globalPickedKey, AlbumSyncer.globalRejectedKey]
+        for event in events {
+            live.insert("event.\(event.stableKey).all")
+            live.insert("event.\(event.stableKey).picked")
+        }
+
+        let stale = baselines.keys.filter { !live.contains($0) }
+        guard !stale.isEmpty else { return }
+        for key in stale {
+            if let row = baselines.removeValue(forKey: key) { context.delete(row) }
+        }
+        persist()
     }
 
     // MARK: - Rebuilding from Photos
@@ -309,7 +330,7 @@ final class RatingStore: ObservableObject {
         for importedEvent in imported.events {
             guard let event = (try? context.fetch(FetchDescriptor<LightTableEvent>()))?
                 .first(where: { $0.photosFolderID == importedEvent.folderID }) else { continue }
-            let key = "event.\(event.persistentModelID.hashValue)"
+            let key = "event.\(event.stableKey)"
             setBaseline("\(key).all", members: importedEvent.memberIDs)
             setBaseline("\(key).picked", members: importedEvent.pickedIDs)
         }

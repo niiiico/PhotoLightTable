@@ -23,7 +23,11 @@ final class ThumbnailLoader: ObservableObject {
     private var cachedSize: CGSize = .zero
 
     private init() {
+        // A count limit alone doesn't bound memory: 1500 thumbnails is a few
+        // hundred megabytes at 90pt and well over a gigabyte at 360pt. Costing
+        // each entry by its pixels bounds it regardless of thumbnail size.
         cache.countLimit = 1500
+        cache.totalCostLimit = 384 * 1024 * 1024
         manager.allowsCachingHighQualityImages = false
     }
 
@@ -82,7 +86,8 @@ final class ThumbnailLoader: ObservableObject {
         }
 
         if let image {
-            cache.setObject(image, forKey: cacheKey)
+            let cost = Int(target.width * target.height) * 4
+            cache.setObject(image, forKey: cacheKey, cost: cost)
             cachedKeys[item.id, default: []].insert(cacheKey)
         }
         return image
