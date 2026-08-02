@@ -9,6 +9,10 @@ struct ThumbnailCell: View, Equatable {
     /// Only set during a genuine multi-selection — a checkmark on every cell you
     /// arrow through would be noise.
     let showsSelectionBadge: Bool
+    /// Changes when the asset's pixels change under a stable identifier, which
+    /// is what makes an edited photo reload rather than serve its old cache
+    /// entry — and what lets `.equatable()` see that this cell is now different.
+    let imageVersion: Int
 
     @State private var image: PlatformImage?
     @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
@@ -41,7 +45,7 @@ struct ThumbnailCell: View, Equatable {
                 radius: isFocused ? 7 : 0)
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
-        .task(id: "\(item.id)#\(fillModeRaw)") {
+        .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
             // Referenced directly rather than held in a @StateObject: the
             // loader is shared, so wrapping it per cell made every thumbnail
             // observe it for no benefit.
@@ -156,5 +160,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.isFocused == rhs.isFocused
             && lhs.showsSelectionBadge == rhs.showsSelectionBadge
+            && lhs.imageVersion == rhs.imageVersion
     }
 }

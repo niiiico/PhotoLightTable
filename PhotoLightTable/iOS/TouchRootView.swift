@@ -54,7 +54,8 @@ struct TouchRootView: View {
                                   rating: ratings.rating(for: item.id),
                                   isSelected: false,
                                   isFocused: false,
-                                  showsSelectionBadge: false)
+                                  showsSelectionBadge: false,
+                                  imageVersion: 0)
                 }
             }
             .padding(3)

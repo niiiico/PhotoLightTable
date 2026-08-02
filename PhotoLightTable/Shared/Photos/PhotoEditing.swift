@@ -2,6 +2,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Foundation
 import Photos
+import SwiftData
 
 /// The description of an edit — small, versioned, and the only thing that needs
 /// to survive a round trip through Photos.
@@ -16,6 +17,10 @@ struct PhotoEditRecipe: Codable, Equatable {
 
     static let neutral = PhotoEditRecipe()
     var isNeutral: Bool { self == .neutral }
+
+    var summary: String {
+        isNeutral ? "No adjustments" : String(format: "%+.2f EV", exposure)
+    }
 
     func apply(to image: CIImage) -> CIImage {
         guard !isNeutral else { return image }
@@ -57,6 +62,11 @@ final class PhotoEditSession: ObservableObject {
     /// Whether this photo already carries an edit — ours or another app's.
     @Published private(set) var hasExistingEdit = false
     @Published private(set) var errorMessage: String?
+
+    /// Set by the view from the environment; history is persisted alongside
+    /// ratings and events.
+    var modelContext: ModelContext?
+    @Published private(set) var history: [PhotoEditVersion] = []
 
     private var input: PHContentEditingInput?
     private var previewBase: CIImage?
@@ -105,6 +115,7 @@ final class PhotoEditSession: ObservableObject {
             previewBase = CIImage.from(display)
         }
         renderPreview()
+        loadHistory(for: item)
     }
 
     func cancel() { reset() }
@@ -170,6 +181,7 @@ final class PhotoEditSession: ObservableObject {
 
         loadedRecipe = recipe
         hasExistingEdit = true
+        record(recipe, for: item)
     }
 
     /// Photos keeps the original, so this is a true revert rather than an
@@ -185,6 +197,46 @@ final class PhotoEditSession: ObservableObject {
         loadedRecipe = .neutral
         hasExistingEdit = false
         renderPreview()
+        record(.neutral, for: item)
+    }
+
+    // MARK: - History
+
+    private func loadHistory(for item: PhotoItem) {
+        guard let modelContext else { history = []; return }
+        let assetID = item.id
+        var descriptor = FetchDescriptor<PhotoEditVersion>(
+            predicate: #Predicate { $0.assetID == assetID },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        descriptor.fetchLimit = 50
+        history = (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    private func record(_ recipe: PhotoEditRecipe, for item: PhotoItem) {
+        guard let modelContext, let data = try? JSONEncoder().encode(recipe) else { return }
+        // Re-applying the same recipe isn't a new state to return to.
+        if let latest = history.first, latest.recipe == recipe { return }
+
+        modelContext.insert(PhotoEditVersion(assetID: item.id, recipeData: data))
+        try? modelContext.save()
+        loadHistory(for: item)
+    }
+
+    /// Puts a previous recipe back and commits it, so restoring is itself an
+    /// edit — it lands in the history like any other and can be stepped back
+    /// out of.
+    func restore(_ version: PhotoEditVersion, for item: PhotoItem) async throws {
+        guard let recipe = version.recipe else { return }
+        self.recipe = recipe
+        renderPreview()
+        try await commit(for: item)
+    }
+
+    func clearHistory(for item: PhotoItem) {
+        guard let modelContext else { return }
+        for version in history { modelContext.delete(version) }
+        try? modelContext.save()
+        history = []
     }
 
     // MARK: - Adjustment data

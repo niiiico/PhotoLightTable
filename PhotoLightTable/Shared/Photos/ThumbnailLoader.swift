@@ -10,6 +10,11 @@ import SwiftUI
 final class ThumbnailLoader: ObservableObject {
     static let shared = ThumbnailLoader()
 
+    /// Bumped whenever an asset's image changes underneath a stable identifier.
+    /// Views include it in their identity so they re-request rather than
+    /// trusting a cache entry that is no longer the same photo.
+    @Published private(set) var versions: [String: Int] = [:]
+
     private let manager = PHCachingImageManager()
     private let cache = NSCache<NSString, PlatformImage>()
     private var cachedAssets: [PHAsset] = []
@@ -37,11 +42,16 @@ final class ThumbnailLoader: ObservableObject {
     /// Editing replaces the asset's image while its identifier stays the same,
     /// so without this the grid would keep showing the version from before the
     /// edit until something else happened to evict it.
-    func forget(_ item: PhotoItem) {
-        for key in cachedKeys.removeValue(forKey: item.id) ?? [] {
+    func forget(_ item: PhotoItem) { forget(assetID: item.id) }
+
+    func forget(assetID: String) {
+        for key in cachedKeys.removeValue(forKey: assetID) ?? [] {
             cache.removeObject(forKey: key)
         }
+        versions[assetID, default: 0] += 1
     }
+
+    func version(of assetID: String) -> Int { versions[assetID] ?? 0 }
 
     func thumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) async -> PlatformImage? {
         let cacheKey = key(item.id, size, mode)

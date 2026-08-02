@@ -13,6 +13,8 @@ struct LightTableView: View {
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
+    /// Observed so a changed asset's version reaches the cell that shows it.
+    @ObservedObject private var loader = ThumbnailLoader.shared
     @Environment(\.modelContext) private var context
     @FocusState private var isGridFocused: Bool
 
@@ -197,7 +199,8 @@ struct LightTableView: View {
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: app.selectedIDs.count > 1
-                          && app.selectedIDs.contains(item.id))
+                          && app.selectedIDs.contains(item.id),
+                      imageVersion: loader.version(of: item.id))
             .equatable()
             .id(item.id)
             .background(

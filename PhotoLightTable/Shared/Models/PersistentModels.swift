@@ -24,6 +24,30 @@ final class AssetRating {
     }
 }
 
+/// One edit applied to a photo, kept so any earlier state can be returned to.
+///
+/// Photos itself keeps only the original and the current render — there is no
+/// intermediate history to read back — so a stack of every recipe this app has
+/// applied has to be ours.
+@Model
+final class PhotoEditVersion {
+    var assetID: String
+    /// An encoded `PhotoEditRecipe`, stored rather than referenced so an old
+    /// version stays readable after the recipe type grows new fields.
+    var recipeData: Data
+    var createdAt: Date
+
+    init(assetID: String, recipeData: Data, createdAt: Date = .now) {
+        self.assetID = assetID
+        self.recipeData = recipeData
+        self.createdAt = createdAt
+    }
+
+    var recipe: PhotoEditRecipe? {
+        try? JSONDecoder().decode(PhotoEditRecipe.self, from: recipeData)
+    }
+}
+
 /// What an album contained at the end of the last successful sync.
 ///
 /// Without this, sync can only overwrite: the app cannot tell a photo you added

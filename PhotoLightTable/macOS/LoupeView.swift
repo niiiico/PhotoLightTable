@@ -23,6 +23,8 @@ struct LoupeView: View {
     @StateObject private var zoomState = LoupeZoom()
     @StateObject private var edit = PhotoEditSession()
     @State private var isEditing = false
+    @State private var showsHistory = false
+    @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
@@ -293,6 +295,17 @@ struct LoupeView: View {
                 .help("Discards every edit, including ones made in other apps")
             }
 
+            Button {
+                showsHistory.toggle()
+            } label: {
+                Label("History", systemImage: "clock.arrow.circlepath")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Earlier versions of this photo")
+            .popover(isPresented: $showsHistory, arrowEdge: .top) {
+                historyPopover
+            }
+
             Button("Cancel") { endEditing() }
 
             Button("Apply") {
@@ -313,10 +326,83 @@ struct LoupeView: View {
         .background(.bar)
     }
 
+    private var historyPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Version History")
+                .font(.headline)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            if edit.history.isEmpty {
+                Text("No edits recorded for this photo yet.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(edit.history.enumerated()), id: \.element.persistentModelID) { index, version in
+                            historyRow(version, isCurrent: index == 0)
+                            if version !== edit.history.last { Divider() }
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+
+                Divider()
+                Button("Clear History", role: .destructive) {
+                    guard let current else { return }
+                    edit.clearHistory(for: current)
+                }
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+        }
+        .frame(width: 280)
+    }
+
+    private func historyRow(_ version: PhotoEditVersion, isCurrent: Bool) -> some View {
+        Button {
+            guard let current else { return }
+            Task {
+                try? await edit.restore(version, for: current)
+                await reloadAfterEdit()
+                showsHistory = false
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(version.recipe?.summary ?? "Unreadable")
+                        .font(.callout.weight(isCurrent ? .semibold : .regular))
+                    Text(version.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if isCurrent {
+                    Text("Current")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+        }
+        .buttonStyle(.plain)
+        .disabled(isCurrent)
+    }
+
     private func beginEditing() async {
         guard let current else { return }
         isEditing = true
         zoomState.reset()
+        edit.modelContext = modelContext
         await edit.begin(for: current)
         if !edit.canEdit { isEditing = false }
     }

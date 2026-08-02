@@ -66,6 +66,9 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     var onLibraryChange: (() -> Void)?
 
     private var fetchResult: PHFetchResult<PHAsset>?
+    /// Position of each asset in `items`, so a content change can be applied
+    /// without scanning the whole library.
+    private var indexByID: [String: Int] = [:]
     private var isObserving = false
 
     // MARK: - Authorization
@@ -127,7 +130,20 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         }.value
 
         items = snapshot
+        indexByID = Dictionary(uniqueKeysWithValues: snapshot.enumerated().map { ($1.id, $0) })
         version &+= 1
+    }
+
+    private func apply(changed assets: [PHAsset]) {
+        guard !assets.isEmpty else { return }
+        var touched = false
+        for asset in assets {
+            guard let index = indexByID[asset.localIdentifier] else { continue }
+            items[index] = PhotoItem(asset: asset)
+            ThumbnailLoader.shared.forget(assetID: asset.localIdentifier)
+            touched = true
+        }
+        if touched { version &+= 1 }
     }
 
     // MARK: - Grouping
@@ -165,7 +181,15 @@ extension PhotoLibraryService: PHPhotoLibraryChangeObserver {
                 let isStructural = details.hasIncrementalChanges
                     ? !(details.insertedObjects.isEmpty && details.removedObjects.isEmpty)
                     : true
-                if isStructural { await reload() }
+                if isStructural {
+                    await reload()
+                } else if details.hasIncrementalChanges {
+                    // An edit replaces an asset's image while its identifier
+                    // stays the same, so nothing above would notice. Refresh
+                    // just those entries — this covers edits made in Photos as
+                    // well as our own.
+                    apply(changed: details.changedObjects)
+                }
             }
 
             // Album membership changes without touching the asset fetch at all,
