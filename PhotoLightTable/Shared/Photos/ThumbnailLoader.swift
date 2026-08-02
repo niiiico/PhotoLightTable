@@ -13,6 +13,8 @@ final class ThumbnailLoader: ObservableObject {
     private let manager = PHCachingImageManager()
     private let cache = NSCache<NSString, PlatformImage>()
     private var cachedAssets: [PHAsset] = []
+    /// Which cache keys exist per asset, so one asset can be evicted precisely.
+    private var cachedKeys: [String: Set<NSString>] = [:]
     private var cachedSize: CGSize = .zero
 
     private init() {
@@ -28,6 +30,17 @@ final class ThumbnailLoader: ObservableObject {
 
     func cachedThumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) -> PlatformImage? {
         cache.object(forKey: key(item.id, size, mode))
+    }
+
+    /// Drops every cached size and fill mode for one asset.
+    ///
+    /// Editing replaces the asset's image while its identifier stays the same,
+    /// so without this the grid would keep showing the version from before the
+    /// edit until something else happened to evict it.
+    func forget(_ item: PhotoItem) {
+        for key in cachedKeys.removeValue(forKey: item.id) ?? [] {
+            cache.removeObject(forKey: key)
+        }
     }
 
     func thumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) async -> PlatformImage? {
@@ -58,7 +71,10 @@ final class ThumbnailLoader: ObservableObject {
             }
         }
 
-        if let image { cache.setObject(image, forKey: cacheKey) }
+        if let image {
+            cache.setObject(image, forKey: cacheKey)
+            cachedKeys[item.id, default: []].insert(cacheKey)
+        }
         return image
     }
 

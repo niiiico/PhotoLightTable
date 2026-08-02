@@ -1,3 +1,4 @@
+import CoreImage
 import SwiftUI
 
 #if os(macOS)
@@ -14,6 +15,30 @@ extension Image {
         self.init(nsImage: platformImage)
         #else
         self.init(uiImage: platformImage)
+        #endif
+    }
+}
+
+extension PlatformImage {
+    static func from(_ cgImage: CGImage) -> PlatformImage {
+        #if os(macOS)
+        // A zero size takes the CGImage's own pixel dimensions.
+        NSImage(cgImage: cgImage, size: .zero)
+        #else
+        UIImage(cgImage: cgImage)
+        #endif
+    }
+}
+
+extension CIImage {
+    static func from(_ image: PlatformImage) -> CIImage? {
+        #if os(macOS)
+        guard let data = image.tiffRepresentation else { return nil }
+        return CIImage(data: data)
+        #else
+        if let ciImage = image.ciImage { return ciImage }
+        guard let cgImage = image.cgImage else { return nil }
+        return CIImage(cgImage: cgImage)
         #endif
     }
 }

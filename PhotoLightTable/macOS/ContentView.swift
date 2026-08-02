@@ -309,6 +309,7 @@ struct ShortcutsHelp: View {
         ("U", "Clear rating"),
         ("6 7 8 9 0", "Red / Yellow / Green / Blue / Purple label"),
         ("R", "Select related photos (again to widen)"),
+        ("E", "Loupe: adjust the photo"),
         ("Z", "Loupe: zoom to 250% / fit"),
         ("+ −", "Loupe: zoom in / out"),
         ("← → ↑ ↓", "Move between photos"),

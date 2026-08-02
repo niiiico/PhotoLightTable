@@ -21,6 +21,8 @@ struct LoupeView: View {
     @AppStorage(PreferenceKeys.loupeFields) private var fieldsRaw = LoupeFields.defaultValue
 
     @StateObject private var zoomState = LoupeZoom()
+    @StateObject private var edit = PhotoEditSession()
+    @State private var isEditing = false
 
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
@@ -31,7 +33,7 @@ struct LoupeView: View {
         VStack(spacing: 0) {
             topBar
             photoArea
-            bottomBar
+            if isEditing { editBar } else { bottomBar }
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -46,6 +48,7 @@ struct LoupeView: View {
         .animation(.easeOut(duration: 0.12), value: currentPick)
         .onKeyPress(action: handleKey)
         .task(id: current?.id) {
+            if isEditing { endEditing() }
             zoomState.reset()
             await loadImage()
         }
@@ -60,7 +63,7 @@ struct LoupeView: View {
     private var photoArea: some View {
         GeometryReader { geo in
             ZStack {
-                if let image {
+                if let image = isEditing ? (edit.preview ?? image) : image {
                     Image(platformImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -130,6 +133,19 @@ struct LoupeView: View {
                 Button("Fit") { zoomState.reset() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+            }
+
+            if !isEditing {
+                Button {
+                    Task { await beginEditing() }
+                } label: {
+                    Label("Edit", systemImage: "slider.horizontal.3")
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                        .foregroundStyle(edit.hasExistingEdit ? Color.accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Adjust this photo (E)")
             }
 
             Button {
@@ -238,6 +254,86 @@ struct LoupeView: View {
         fieldsRaw = LoupeFields.encode(fields)
     }
 
+    // MARK: - Editing
+
+    private var editBar: some View {
+        HStack(spacing: 14) {
+            Label("Exposure", systemImage: "plusminus.circle")
+                .labelStyle(.titleOnly)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+
+            Slider(value: Binding(
+                get: { edit.recipe.exposure },
+                set: { edit.recipe.exposure = $0; edit.renderPreview() }
+            ), in: -3...3, step: 0.05)
+            .frame(minWidth: 180)
+
+            Text(String(format: "%+.2f EV", edit.recipe.exposure))
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fixedSize()
+
+            Button("Reset") {
+                edit.recipe = .neutral
+                edit.renderPreview()
+            }
+            .disabled(edit.recipe.isNeutral)
+
+            Divider().frame(height: 16)
+
+            if edit.hasExistingEdit {
+                Button("Revert to Original") {
+                    Task {
+                        try? await edit.revert(for: current!)
+                        await reloadAfterEdit()
+                    }
+                }
+                .help("Discards every edit, including ones made in other apps")
+            }
+
+            Button("Cancel") { endEditing() }
+
+            Button("Apply") {
+                Task {
+                    guard let current else { return }
+                    try? await edit.commit(for: current)
+                    await reloadAfterEdit()
+                    endEditing()
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!edit.isDirty || edit.isCommitting)
+
+            if edit.isCommitting { ProgressView().controlSize(.small) }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private func beginEditing() async {
+        guard let current else { return }
+        isEditing = true
+        zoomState.reset()
+        await edit.begin(for: current)
+        if !edit.canEdit { isEditing = false }
+    }
+
+    private func endEditing() {
+        isEditing = false
+        edit.cancel()
+    }
+
+    /// The committed render replaces the asset's image, so the copy on screen —
+    /// and the thumbnail cache behind it — are both stale.
+    private func reloadAfterEdit() async {
+        guard let current else { return }
+        ThumbnailLoader.shared.forget(current)
+        await loadImage()
+    }
+
     // MARK: - State
 
     private func close() {
@@ -268,7 +364,11 @@ struct LoupeView: View {
             app.move(by: -1, in: items, extendSelection: false); return .handled
         case .rightArrow:
             app.move(by: 1, in: items, extendSelection: false); return .handled
-        case .escape, .space, .return:
+        case .escape:
+            if isEditing { endEditing() } else { close() }
+            return .handled
+        case .space, .return:
+            guard !isEditing else { return .ignored }
             close()
             return .handled
         default:
@@ -277,6 +377,15 @@ struct LoupeView: View {
 
         guard let character = press.characters.lowercased().first,
               let focusID = app.focusID else { return .ignored }
+
+        if character == "e" {
+            if isEditing { endEditing() } else { Task { await beginEditing() } }
+            return .handled
+        }
+
+        // While editing, the digits and verdict keys belong to the panel's
+        // controls rather than to rating.
+        guard !isEditing else { return .ignored }
 
         switch character {
         case "p":
