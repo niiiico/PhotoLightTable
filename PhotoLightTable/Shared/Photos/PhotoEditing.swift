@@ -75,7 +75,11 @@ enum Adjustment: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-struct PhotoEditRecipe: Codable, Equatable {
+/// The eight tonal values, shared by the whole-image stack and by each mask.
+///
+/// Factored out so a mask is "the same adjustments, somewhere in particular"
+/// rather than a parallel set that could drift apart from the global one.
+struct ToneAdjustments: Codable, Equatable {
     var exposure: Double = 0
     var contrast: Double = 0
     var saturation: Double = 0
@@ -84,15 +88,9 @@ struct PhotoEditRecipe: Codable, Equatable {
     var shadows: Double = 0
     var warmth: Double = 0
     var tint: Double = 0
-    var crop: CropRect = .full
 
-    static let neutral = PhotoEditRecipe()
+    static let neutral = ToneAdjustments()
     var isNeutral: Bool { self == .neutral }
-
-    /// True when no tonal adjustment is set, regardless of the crop.
-    var hasNeutralTone: Bool {
-        Adjustment.allCases.allSatisfy { self[$0] == 0 }
-    }
 
     subscript(adjustment: Adjustment) -> Double {
         get {
@@ -122,19 +120,17 @@ struct PhotoEditRecipe: Codable, Equatable {
     }
 
     var summary: String {
-        var parts = Adjustment.allCases
+        let parts = Adjustment.allCases
             .filter { self[$0] != 0 }
             .map { "\($0.label) \($0.formatted(self[$0]))" }
-        if !crop.isFull { parts.append("Cropped") }
         return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
     }
 
-    /// Decoded leniently so a recipe written before a field existed still opens.
-    ///
-    /// Swift's synthesised decoding requires every key to be present, defaults
-    /// notwithstanding — which would make each new parameter silently orphan
-    /// every edit made before it, since a recipe that fails to decode reads as
-    /// no edit at all.
+    init() {}
+
+    /// Lenient, so a recipe written before a parameter existed still opens.
+    /// Swift's synthesised decoding requires every key regardless of defaults,
+    /// and a recipe that fails to decode is indistinguishable from no edit.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         exposure = try container.decodeIfPresent(Double.self, forKey: .exposure) ?? 0
@@ -145,19 +141,12 @@ struct PhotoEditRecipe: Codable, Equatable {
         shadows = try container.decodeIfPresent(Double.self, forKey: .shadows) ?? 0
         warmth = try container.decodeIfPresent(Double.self, forKey: .warmth) ?? 0
         tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? 0
-        crop = try container.decodeIfPresent(CropRect.self, forKey: .crop) ?? .full
     }
 
-    init() {}
-
-    /// Tone first, geometry last: cropping is a change of frame, and applying it
-    /// before the adjustments would leave every later mask defined against a
-    /// different extent depending on whether a crop happened to be set.
-    ///
-    /// The order within the tonal stack follows how the adjustments are meant to
-    /// be read: overall exposure, then recovery at each end of the range, then
-    /// white balance, then contrast and saturation on top of a settled image.
-    func apply(to image: CIImage, applyCrop: Bool = true) -> CIImage {
+    /// The order follows how the adjustments are meant to be read: overall
+    /// exposure, recovery at each end of the range, white balance, then contrast
+    /// and saturation over a settled image.
+    func apply(to image: CIImage) -> CIImage {
         var result = image
 
         if exposure != 0 {
@@ -199,6 +188,138 @@ struct PhotoEditRecipe: Codable, Equatable {
             filter.inputImage = result
             filter.amount = Float(vibrance)
             result = filter.outputImage ?? result
+        }
+        return result
+    }
+}
+
+/// A normalized point with a top-left origin, matching how the UI thinks.
+struct EditPoint: Codable, Equatable {
+    var x: Double
+    var y: Double
+
+    /// Into Core Image's bottom-left pixel space for a given extent.
+    func inPixels(of extent: CGRect) -> CGPoint {
+        CGPoint(x: extent.minX + x * extent.width,
+                y: extent.minY + (1 - y) * extent.height)
+    }
+}
+
+/// A selective adjustment: where it applies, and what it does there.
+struct EditMask: Codable, Equatable, Identifiable {
+    enum Kind: String, Codable {
+        case linear
+        case radial
+    }
+
+    var id: UUID = UUID()
+    var kind: Kind = .linear
+    var isEnabled: Bool = true
+    var isInverted: Bool = false
+    var tone = ToneAdjustments()
+
+    /// For a linear gradient, the ramp runs from `start` (no effect) to `end`
+    /// (full effect). For a radial one, `start` is the centre and `end` sits on
+    /// the edge of the falloff.
+    var start = EditPoint(x: 0.5, y: 0.15)
+    var end = EditPoint(x: 0.5, y: 0.55)
+
+    var name: String {
+        kind == .linear ? "Linear Gradient" : "Radial Gradient"
+    }
+
+    /// Geometry is stored against the *uncropped* image, so changing the crop
+    /// reframes the photo without dragging the masks across its content.
+    func maskImage(for extent: CGRect) -> CIImage? {
+        let p0 = start.inPixels(of: extent)
+        let p1 = end.inPixels(of: extent)
+
+        let clear = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        let solid = CIColor(red: 1, green: 1, blue: 1, alpha: 1)
+        let from = isInverted ? solid : clear
+        let to = isInverted ? clear : solid
+
+        let generated: CIImage?
+        switch kind {
+        case .linear:
+            let filter = CIFilter.smoothLinearGradient()
+            filter.point0 = p0
+            filter.point1 = p1
+            filter.color0 = from
+            filter.color1 = to
+            generated = filter.outputImage
+        case .radial:
+            let filter = CIFilter.radialGradient()
+            filter.center = p0
+            filter.radius0 = 0
+            filter.radius1 = Float(hypot(p1.x - p0.x, p1.y - p0.y))
+            filter.color0 = to
+            filter.color1 = from
+            generated = filter.outputImage
+        }
+
+        // Gradient generators are infinite; without cropping, the blend has no
+        // definite extent and the render size becomes unbounded.
+        return generated?.cropped(to: extent)
+    }
+}
+
+struct PhotoEditRecipe: Codable, Equatable {
+    var tone = ToneAdjustments()
+    var masks: [EditMask] = []
+    var crop: CropRect = .full
+
+    static let neutral = PhotoEditRecipe()
+    var isNeutral: Bool { self == .neutral }
+
+    var hasNeutralTone: Bool { tone.isNeutral }
+
+    subscript(adjustment: Adjustment) -> Double {
+        get { tone[adjustment] }
+        set { tone[adjustment] = newValue }
+    }
+
+    var summary: String {
+        var parts: [String] = []
+        if !tone.isNeutral { parts.append(tone.summary) }
+        let active = masks.filter { $0.isEnabled && !$0.tone.isNeutral }.count
+        if active > 0 { parts.append("\(active) mask\(active == 1 ? "" : "s")") }
+        if !crop.isFull { parts.append("Cropped") }
+        return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
+    }
+
+    init() {}
+
+    /// Reads both shapes: the tonal values used to sit at the top level, before
+    /// masks needed the same set. Old recipes decode into `tone` so edits made
+    /// before this change still open as parameters rather than as nothing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let nested = try container.decodeIfPresent(ToneAdjustments.self, forKey: .tone) {
+            tone = nested
+        } else {
+            tone = try ToneAdjustments(from: decoder)
+        }
+        masks = try container.decodeIfPresent([EditMask].self, forKey: .masks) ?? []
+        crop = try container.decodeIfPresent(CropRect.self, forKey: .crop) ?? .full
+    }
+
+    /// Whole-image tone, then each mask over the result, then geometry.
+    ///
+    /// Masks run against the uncropped extent so their placement is a fact about
+    /// the photo rather than about the current crop.
+    func apply(to image: CIImage, applyCrop: Bool = true) -> CIImage {
+        var result = tone.apply(to: image)
+
+        for mask in masks where mask.isEnabled && !mask.tone.isNeutral {
+            guard let maskImage = mask.maskImage(for: result.extent) else { continue }
+            let adjusted = mask.tone.apply(to: result)
+
+            let blend = CIFilter.blendWithMask()
+            blend.inputImage = adjusted
+            blend.backgroundImage = result
+            blend.maskImage = maskImage
+            result = blend.outputImage ?? result
         }
 
         if applyCrop, !crop.isFull {
@@ -264,12 +385,12 @@ final class PhotoEditSession: ObservableObject {
     /// pair is handed back the original image plus the recipe; anything else
     /// sees the rendered result.
     static let formatIdentifier = "com.photolighttable.edit"
-    static let formatVersion = "2"
+    static let formatVersion = "3"
     /// Every version this build can still read. Dropping "1" here would make
     /// existing edits look like another app's work: PhotoKit would hand back the
     /// rendered image instead of the original, and the next edit would compound
     /// on top of the last one.
-    static let readableFormatVersions: Set<String> = ["1", "2"]
+    static let readableFormatVersions: Set<String> = ["1", "2", "3"]
 
     @Published var recipe = PhotoEditRecipe()
     @Published private(set) var preview: PlatformImage?

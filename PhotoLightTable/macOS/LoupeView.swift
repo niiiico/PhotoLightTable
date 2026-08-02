@@ -28,6 +28,7 @@ struct LoupeView: View {
     @State private var editError: String?
     @State private var isCropping = false
     @State private var cropAspect: CropAspect = .free
+    @State private var selectedMaskID: UUID?
     @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
@@ -69,6 +70,7 @@ struct LoupeView: View {
             // Editing stays on across photos, so a run of frames can be worked
             // through without leaving and re-entering the panel each time.
             if isEditing, let current {
+                selectedMaskID = nil
                 await edit.begin(for: current)
                 renderForCurrentTool()
             }
@@ -97,6 +99,17 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
+            .overlay {
+                if !isCropping, let displayed = edit.preview ?? image,
+                   let index = selectedMaskIndex {
+                    MaskOverlay(mask: Binding(
+                        get: { edit.recipe.masks[index] },
+                        set: { edit.recipe.masks[index] = $0; renderForCurrentTool() }
+                    ),
+                    imageAspect: displayed.size.height > 0
+                        ? displayed.size.width / displayed.size.height : 1)
+                }
+            }
             .overlay {
                 if isCropping, let displayed = edit.preview ?? image {
                     CropOverlay(crop: Binding(
@@ -301,11 +314,39 @@ struct LoupeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 10) {
-                        sectionHeading("Adjust", isReset: edit.recipe.hasNeutralTone) {
-                            for adjustment in Adjustment.allCases { edit.recipe[adjustment] = 0 }
+                        sectionHeading(selectedMaskIndex == nil ? "Adjust" : "Adjust Mask",
+                                       isReset: activeTone.isNeutral) {
+                            for adjustment in Adjustment.allCases { setTone(adjustment, 0) }
                             renderForCurrentTool()
                         }
                         ForEach(Adjustment.allCases) { adjustmentSlider($0) }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Masks")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Menu {
+                                Button("Linear Gradient") { addMask(.linear) }
+                                Button("Radial Gradient") { addMask(.radial) }
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                        }
+
+                        if edit.recipe.masks.isEmpty {
+                            Text("Add a gradient to adjust part of the photo.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(edit.recipe.masks) { mask in
+                                maskRow(mask)
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -499,30 +540,123 @@ struct LoupeView: View {
             HStack {
                 Text(adjustment.label)
                     .font(.caption)
-                    .foregroundStyle(edit.recipe[adjustment] == 0 ? .secondary : .primary)
+                    .foregroundStyle(activeTone[adjustment] == 0 ? .secondary : .primary)
                 Spacer()
-                Text(adjustment.formatted(edit.recipe[adjustment]))
+                Text(adjustment.formatted(activeTone[adjustment]))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
-                edit.recipe[adjustment] = 0
+                setTone(adjustment, 0)
                 renderForCurrentTool()
             }
             .help("\(adjustment.label) — double-click to reset")
 
             Slider(value: Binding(
-                get: { edit.recipe[adjustment] },
-                set: { edit.recipe[adjustment] = $0; renderForCurrentTool() }
+                get: { activeTone[adjustment] },
+                set: { setTone(adjustment, $0); renderForCurrentTool() }
             ), in: adjustment.range)
             .controlSize(.small)
         }
     }
 
+    // MARK: - Masks
+
+    private var selectedMaskIndex: Int? {
+        guard let selectedMaskID else { return nil }
+        return edit.recipe.masks.firstIndex { $0.id == selectedMaskID }
+    }
+
+    /// The sliders edit whichever tone is in focus — the whole image, or the
+    /// selected mask. One set of controls, one meaning at a time.
+    private var activeTone: ToneAdjustments {
+        guard let index = selectedMaskIndex else { return edit.recipe.tone }
+        return edit.recipe.masks[index].tone
+    }
+
+    private func setTone(_ adjustment: Adjustment, _ value: Double) {
+        if let index = selectedMaskIndex {
+            edit.recipe.masks[index].tone[adjustment] = value
+        } else {
+            edit.recipe.tone[adjustment] = value
+        }
+    }
+
+    private func addMask(_ kind: EditMask.Kind) {
+        var mask = EditMask()
+        mask.kind = kind
+        if kind == .radial {
+            mask.start = EditPoint(x: 0.5, y: 0.5)
+            mask.end = EditPoint(x: 0.78, y: 0.5)
+        }
+        edit.recipe.masks.append(mask)
+        selectedMaskID = mask.id
+        // Cropping and mask placement both want the pointer, so adding a mask
+        // puts the handles away.
+        if isCropping { setCropping(false) }
+        renderForCurrentTool()
+    }
+
+    private func maskRow(_ mask: EditMask) -> some View {
+        let isSelected = mask.id == selectedMaskID
+        return HStack(spacing: 8) {
+            Button {
+                if let index = edit.recipe.masks.firstIndex(where: { $0.id == mask.id }) {
+                    edit.recipe.masks[index].isEnabled.toggle()
+                    renderForCurrentTool()
+                }
+            } label: {
+                Image(systemName: mask.isEnabled ? "eye" : "eye.slash")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(mask.isEnabled ? "Hide this mask" : "Show this mask")
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(mask.name)
+                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                Text(mask.tone.isNeutral ? "No adjustments" : mask.tone.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Menu {
+                Button(mask.isInverted ? "Uninvert" : "Invert") {
+                    if let index = edit.recipe.masks.firstIndex(where: { $0.id == mask.id }) {
+                        edit.recipe.masks[index].isInverted.toggle()
+                        renderForCurrentTool()
+                    }
+                }
+                Divider()
+                Button("Delete", role: .destructive) {
+                    edit.recipe.masks.removeAll { $0.id == mask.id }
+                    if selectedMaskID == mask.id { selectedMaskID = nil }
+                    renderForCurrentTool()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear,
+                    in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture { selectedMaskID = isSelected ? nil : mask.id }
+    }
+
     private func setCropping(_ active: Bool) {
         isCropping = active
-        if active { zoomState.reset() }
+        // The two overlays would compete for the same drags.
+        if active { zoomState.reset(); selectedMaskID = nil }
         renderForCurrentTool()
     }
 
