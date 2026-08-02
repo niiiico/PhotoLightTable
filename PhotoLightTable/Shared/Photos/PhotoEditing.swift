@@ -559,6 +559,8 @@ final class PhotoEditSession: ObservableObject {
     private var input: PHContentEditingInput?
     private var previewBase: CIImage?
     private let context = CIContext()
+    private var previewTask: Task<Void, Never>?
+    private var pendingApplyCrop = true
 
     var isDirty: Bool { recipe != loadedRecipe }
     private var loadedRecipe = PhotoEditRecipe.neutral
@@ -570,7 +572,11 @@ final class PhotoEditSession: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        canEdit = item.asset.canPerform(.content)
+        // canPerform faults PHAssetAdjustmentProperties, which PhotoKit warns
+        // about when it happens on the main queue. There is no fetch option to
+        // prefetch them, so the read is moved off instead.
+        let asset = item.asset
+        canEdit = await Task.detached { asset.canPerform(.content) }.value
         guard canEdit else { return }
 
         let loaded = await Self.loadInput(for: item.asset)
@@ -595,6 +601,8 @@ final class PhotoEditSession: ObservableObject {
     func cancel() { reset() }
 
     private func reset() {
+        previewTask?.cancel()
+        previewTask = nil
         input = nil
         previewBase = nil
         preview = nil
@@ -606,9 +614,29 @@ final class PhotoEditSession: ObservableObject {
 
     // MARK: - Preview
 
+    /// Asks for a preview, coalescing repeated requests.
+    ///
+    /// Dragging a slider asks far more often than a render can be produced, and
+    /// rendering straight from the binding's setter publishes `preview` while
+    /// SwiftUI is mid-update — which is undefined behaviour and what the
+    /// "Publishing changes from within view updates" warning reports. Yielding
+    /// first moves the publish out of the update pass and drops the redundant
+    /// renders on the way.
+    func renderPreview(applyCrop: Bool = true) {
+        pendingApplyCrop = applyCrop
+        guard previewTask == nil else { return }
+
+        previewTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            self.previewTask = nil
+            self.renderPreviewNow(applyCrop: self.pendingApplyCrop)
+        }
+    }
+
     /// Renders at display size, which is what `PHContentEditingInput` provides
     /// for exactly this purpose — the full-size render is deferred to commit.
-    func renderPreview(applyCrop: Bool = true) {
+    private func renderPreviewNow(applyCrop: Bool) {
         guard let previewBase else { return }
         let edited = recipe.apply(to: previewBase, applyCrop: applyCrop)
         guard let cgImage = context.createCGImage(edited, from: edited.extent) else { return }
@@ -712,7 +740,8 @@ final class PhotoEditSession: ObservableObject {
 
     /// Loads, renders and commits in one call, for photos with no open session.
     static func apply(_ recipe: PhotoEditRecipe, to asset: PHAsset) async throws {
-        guard asset.canPerform(.content) else { throw PhotoEditError.notEditable }
+        let editable = await Task.detached { asset.canPerform(.content) }.value
+        guard editable else { throw PhotoEditError.notEditable }
         guard let input = await loadInput(for: asset) else { throw PhotoEditError.couldNotOpen }
         try await write(recipe, using: input, to: asset)
     }
