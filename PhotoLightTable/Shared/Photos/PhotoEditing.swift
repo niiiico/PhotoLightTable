@@ -89,6 +89,11 @@ struct PhotoEditRecipe: Codable, Equatable {
     static let neutral = PhotoEditRecipe()
     var isNeutral: Bool { self == .neutral }
 
+    /// True when no tonal adjustment is set, regardless of the crop.
+    var hasNeutralTone: Bool {
+        Adjustment.allCases.allSatisfy { self[$0] == 0 }
+    }
+
     subscript(adjustment: Adjustment) -> Double {
         get {
             switch adjustment {

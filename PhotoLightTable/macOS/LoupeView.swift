@@ -36,10 +36,20 @@ struct LoupeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            photoArea
-            if isEditing { editBar } else { bottomBar }
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                topBar
+                photoArea
+                // Metadata stays put while editing: aperture and shutter are
+                // part of judging an adjustment, not something to swap out for
+                // the controls.
+                bottomBar
+            }
+
+            if isEditing {
+                Divider()
+                editPanel
+            }
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -279,54 +289,85 @@ struct LoupeView: View {
 
     // MARK: - Editing
 
-    /// One panel for the whole session. Crop is a tool that toggles its handles
-    /// rather than a mode with its own confirmation: every change accumulates in
-    /// the recipe, and the session is written once, at the end.
-    private var editBar: some View {
-        VStack(spacing: 8) {
-            // Two columns of compact sliders: eight parameters in one row would
-            // leave each too short to place precisely.
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 18),
-                                GridItem(.flexible(), spacing: 18)],
-                      spacing: 6) {
-                ForEach(Adjustment.allCases) { adjustment in
-                    adjustmentSlider(adjustment)
-                }
-            }
+    /// One panel for the whole session, down the side rather than across the
+    /// bottom: a vertical stack gives each slider its full width, and it leaves
+    /// the photo the whole height of the window.
+    ///
+    /// Crop is a tool whose handles toggle rather than a mode with its own
+    /// confirmation. Every change accumulates in the recipe, and the session is
+    /// written once, at the end.
+    private var editPanel: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionHeading("Adjust", isReset: edit.recipe.hasNeutralTone) {
+                            for adjustment in Adjustment.allCases { edit.recipe[adjustment] = 0 }
+                            renderForCurrentTool()
+                        }
+                        ForEach(Adjustment.allCases) { adjustmentSlider($0) }
+                    }
 
-            HStack(spacing: 12) {
-                Toggle(isOn: Binding(get: { isCropping }, set: { setCropping($0) })) {
-                    Label("Crop", systemImage: "crop")
-                        .labelStyle(.iconOnly)
-                }
-                .toggleStyle(.button)
-                .help("Crop this photo (C)")
+                    VStack(alignment: .leading, spacing: 10) {
+                        sectionHeading("Crop", isReset: edit.recipe.crop.isFull) {
+                            edit.recipe.crop = .full
+                            renderForCurrentTool()
+                        }
 
-                if isCropping {
-                    Picker("Aspect", selection: $cropAspect) {
-                        ForEach(CropAspect.allCases) { option in
-                            Text(option.label).tag(option)
+                        Toggle(isOn: Binding(get: { isCropping }, set: { setCropping($0) })) {
+                            Label("Show crop handles", systemImage: "crop")
+                        }
+                        .toggleStyle(.button)
+                        .help("Crop this photo (C)")
+
+                        if isCropping {
+                            Picker("Aspect", selection: $cropAspect) {
+                                ForEach(CropAspect.allCases) { option in
+                                    Text(option.label).tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 320)
-
-                    Button("Reset Crop") { edit.recipe.crop = .full }
-                        .disabled(edit.recipe.crop.isFull)
                 }
+                .padding(16)
+            }
 
-                Spacer(minLength: 8)
+            Divider()
+            editFooter
+        }
+        .frame(width: 300)
+        .background(.bar)
+    }
 
-                if let editError {
-                    Label(editError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                }
+    private func sectionHeading(_ title: String,
+                                isReset: Bool,
+                                reset: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Button("Reset", action: reset)
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .disabled(isReset)
+                .opacity(isReset ? 0.4 : 1)
+        }
+    }
 
-                if edit.isCommitting { ProgressView().controlSize(.small) }
+    private var editFooter: some View {
+        VStack(spacing: 10) {
+            if let editError {
+                Label(editError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
+            HStack(spacing: 8) {
                 Button {
                     showsHistory.toggle()
                 } label: {
@@ -334,10 +375,10 @@ struct LoupeView: View {
                         .labelStyle(.iconOnly)
                 }
                 .help("Earlier versions of this photo")
-                .popover(isPresented: $showsHistory, arrowEdge: .top) { historyPopover }
+                .popover(isPresented: $showsHistory, arrowEdge: .leading) { historyPopover }
 
                 if edit.hasExistingEdit {
-                    Button("Revert to Original") {
+                    Button {
                         guard let current else { return }
                         Task {
                             do {
@@ -345,22 +386,26 @@ struct LoupeView: View {
                                 await reloadAfterEdit()
                             } catch { editError = error.localizedDescription }
                         }
+                    } label: {
+                        Label("Revert", systemImage: "arrow.uturn.backward")
+                            .labelStyle(.iconOnly)
                     }
-                    .help("Discards every edit, including ones made in other apps")
+                    .help("Revert to original — discards every edit, including other apps'")
                 }
+
+                if edit.isCommitting { ProgressView().controlSize(.small) }
+
+                Spacer()
 
                 Button("Cancel") { endEditing(commit: false) }
 
-                Button(edit.isDirty ? "Save" : "Done") {
-                    endEditing(commit: true)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(edit.isCommitting)
+                Button(edit.isDirty ? "Save" : "Done") { endEditing(commit: true) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(edit.isCommitting)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
+        .padding(.vertical, 12)
     }
 
     private var historyPopover: some View {
@@ -450,27 +495,28 @@ struct LoupeView: View {
     /// Double-click the label to return one adjustment to neutral, which is
     /// quicker than dragging a slider back to exactly zero.
     private func adjustmentSlider(_ adjustment: Adjustment) -> some View {
-        HStack(spacing: 8) {
-            Text(adjustment.label)
-                .font(.caption)
-                .foregroundStyle(edit.recipe[adjustment] == 0 ? .secondary : .primary)
-                .frame(width: 66, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    edit.recipe[adjustment] = 0
-                    renderForCurrentTool()
-                }
-                .help("\(adjustment.label) — double-click to reset")
+        VStack(alignment: .leading, spacing: 1) {
+            HStack {
+                Text(adjustment.label)
+                    .font(.caption)
+                    .foregroundStyle(edit.recipe[adjustment] == 0 ? .secondary : .primary)
+                Spacer()
+                Text(adjustment.formatted(edit.recipe[adjustment]))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                edit.recipe[adjustment] = 0
+                renderForCurrentTool()
+            }
+            .help("\(adjustment.label) — double-click to reset")
 
             Slider(value: Binding(
                 get: { edit.recipe[adjustment] },
                 set: { edit.recipe[adjustment] = $0; renderForCurrentTool() }
             ), in: adjustment.range)
-
-            Text(adjustment.formatted(edit.recipe[adjustment]))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 58, alignment: .trailing)
+            .controlSize(.small)
         }
     }
 
