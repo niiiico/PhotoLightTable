@@ -12,23 +12,82 @@ import SwiftData
 /// `PHAdjustmentData` so the edit can be reopened later as adjustable
 /// parameters rather than as a flattened result. Phase one carries a single
 /// exposure value; masks and further adjustments extend this struct.
+/// A crop in normalized coordinates with a top-left origin, matching how the
+/// UI thinks about it.
+///
+/// Normalized because the same recipe has to render identically against a
+/// display-size preview and a full-resolution commit — a rect in pixels would
+/// mean one of the two is wrong. Core Image's origin is bottom-left, so the
+/// flip happens once, at the point of application.
+struct CropRect: Codable, Equatable {
+    var x: Double = 0
+    var y: Double = 0
+    var width: Double = 1
+    var height: Double = 1
+
+    static let full = CropRect()
+    var isFull: Bool { self == .full }
+
+    /// Clamped to the image and never smaller than a usable sliver.
+    func normalized() -> CropRect {
+        var result = self
+        result.width = min(max(result.width, 0.02), 1)
+        result.height = min(max(result.height, 0.02), 1)
+        result.x = min(max(result.x, 0), 1 - result.width)
+        result.y = min(max(result.y, 0), 1 - result.height)
+        return result
+    }
+}
+
 struct PhotoEditRecipe: Codable, Equatable {
     /// Exposure in stops.
     var exposure: Double = 0
+    var crop: CropRect = .full
 
     static let neutral = PhotoEditRecipe()
     var isNeutral: Bool { self == .neutral }
 
     var summary: String {
-        isNeutral ? "No adjustments" : String(format: "%+.2f EV", exposure)
+        var parts: [String] = []
+        if exposure != 0 { parts.append(String(format: "%+.2f EV", exposure)) }
+        if !crop.isFull { parts.append("Cropped") }
+        return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
     }
 
-    func apply(to image: CIImage) -> CIImage {
-        guard !isNeutral else { return image }
-        let filter = CIFilter.exposureAdjust()
-        filter.inputImage = image
-        filter.ev = Float(exposure)
-        return filter.outputImage ?? image
+    /// Tone first, geometry last: cropping is a change of frame, and applying it
+    /// before the adjustments would leave every later mask defined against a
+    /// different extent depending on whether a crop happened to be set.
+    func apply(to image: CIImage, applyCrop: Bool = true) -> CIImage {
+        var result = image
+
+        if exposure != 0 {
+            let filter = CIFilter.exposureAdjust()
+            filter.inputImage = result
+            filter.ev = Float(exposure)
+            result = filter.outputImage ?? result
+        }
+
+        if applyCrop, !crop.isFull {
+            result = Self.cropped(result, to: crop)
+        }
+        return result
+    }
+
+    private static func cropped(_ image: CIImage, to crop: CropRect) -> CIImage {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else { return image }
+
+        // Top-left origin to Core Image's bottom-left.
+        let rect = CGRect(x: extent.minX + crop.x * extent.width,
+                          y: extent.minY + (1 - crop.y - crop.height) * extent.height,
+                          width: crop.width * extent.width,
+                          height: crop.height * extent.height)
+
+        // Translating back to the origin matters: a cropped CIImage keeps the
+        // original extent's offset, and writing one produces a canvas the size
+        // of the uncropped image with the crop floating inside it.
+        return image.cropped(to: rect)
+            .transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
     }
 }
 
@@ -154,9 +213,9 @@ final class PhotoEditSession: ObservableObject {
 
     /// Renders at display size, which is what `PHContentEditingInput` provides
     /// for exactly this purpose — the full-size render is deferred to commit.
-    func renderPreview() {
+    func renderPreview(applyCrop: Bool = true) {
         guard let previewBase else { return }
-        let edited = recipe.apply(to: previewBase)
+        let edited = recipe.apply(to: previewBase, applyCrop: applyCrop)
         guard let cgImage = context.createCGImage(edited, from: edited.extent) else { return }
         preview = PlatformImage.from(cgImage)
     }

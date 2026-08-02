@@ -26,6 +26,8 @@ struct LoupeView: View {
     @State private var isEditing = false
     @State private var showsHistory = false
     @State private var editError: String?
+    @State private var isCropping = false
+    @State private var cropAspect: CropAspect = .free
     @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
@@ -80,9 +82,21 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
-            .gesture(panGesture)
-            .simultaneousGesture(magnifyGesture)
-            .onTapGesture(count: 2) { zoomState.toggle() }
+            .overlay {
+                if isCropping, let displayed = edit.preview ?? image {
+                    CropOverlay(crop: Binding(
+                        get: { edit.recipe.crop },
+                        set: { edit.recipe.crop = $0 }
+                    ),
+                    imageAspect: displayed.size.height > 0
+                        ? displayed.size.width / displayed.size.height : 1,
+                    aspect: cropAspect)
+                }
+            }
+            // Zoom and pan would fight the handles for the same drags.
+            .gesture(isCropping ? nil : panGesture)
+            .simultaneousGesture(isCropping ? nil : magnifyGesture)
+            .onTapGesture(count: 2) { if !isCropping { zoomState.toggle() } }
         }
         .padding(14)
         // Drawn outside that padding, so the frame never touches the image.
@@ -261,7 +275,48 @@ struct LoupeView: View {
     // MARK: - Editing
 
     private var editBar: some View {
+        isCropping ? AnyView(cropBar) : AnyView(adjustBar)
+    }
+
+    private var cropBar: some View {
         HStack(spacing: 14) {
+            Picker("Aspect", selection: $cropAspect) {
+                ForEach(CropAspect.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 380)
+
+            Button("Reset") {
+                edit.recipe.crop = .full
+                cropAspect = .free
+            }
+            .disabled(edit.recipe.crop.isFull)
+
+            Spacer(minLength: 8)
+
+            Button("Done") { endCropping() }
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private var adjustBar: some View {
+        HStack(spacing: 14) {
+            Button {
+                beginCropping()
+            } label: {
+                Label("Crop", systemImage: "crop")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Crop this photo (C)")
+
+            Divider().frame(height: 16)
+
             Label("Exposure", systemImage: "plusminus.circle")
                 .labelStyle(.titleOnly)
                 .font(.callout)
@@ -426,8 +481,22 @@ struct LoupeView: View {
         if !edit.canEdit { isEditing = false }
     }
 
+    private func beginCropping() {
+        isCropping = true
+        zoomState.reset()
+        // The frame being cropped has to be shown whole, so the preview drops
+        // the crop while the handles are up.
+        edit.renderPreview(applyCrop: false)
+    }
+
+    private func endCropping() {
+        isCropping = false
+        edit.renderPreview()
+    }
+
     private func endEditing() {
         isEditing = false
+        isCropping = false
         editError = nil
         edit.cancel()
     }
@@ -475,7 +544,9 @@ struct LoupeView: View {
         case .rightArrow:
             app.move(by: 1, in: items, extendSelection: false); return .handled
         case .escape:
-            if isEditing { endEditing() } else { close() }
+            if isCropping { endCropping() }
+            else if isEditing { endEditing() }
+            else { close() }
             return .handled
         case .space, .return:
             guard !isEditing else { return .ignored }
@@ -487,6 +558,11 @@ struct LoupeView: View {
 
         guard let character = press.characters.lowercased().first,
               let focusID = app.focusID else { return .ignored }
+
+        if character == "c", isEditing {
+            if isCropping { endCropping() } else { beginCropping() }
+            return .handled
+        }
 
         if character == "e" {
             if isEditing { endEditing() } else { Task { await beginEditing() } }

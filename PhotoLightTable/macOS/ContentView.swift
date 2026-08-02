@@ -310,6 +310,7 @@ struct ShortcutsHelp: View {
         ("6 7 8 9 0", "Red / Yellow / Green / Blue / Purple label"),
         ("R", "Select related photos (again to widen)"),
         ("E", "Loupe: adjust the photo"),
+        ("C", "Loupe: crop (while adjusting)"),
         ("Z", "Loupe: zoom to 250% / fit"),
         ("+ −", "Loupe: zoom in / out"),
         ("← → ↑ ↓", "Move between photos"),
