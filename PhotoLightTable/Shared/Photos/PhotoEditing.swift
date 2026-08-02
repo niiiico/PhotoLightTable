@@ -25,6 +25,23 @@ struct CropRect: Codable, Equatable {
     var width: Double = 1
     var height: Double = 1
 
+    init() {}
+
+    init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decodeIfPresent(Double.self, forKey: .x) ?? 0
+        y = try container.decodeIfPresent(Double.self, forKey: .y) ?? 0
+        width = try container.decodeIfPresent(Double.self, forKey: .width) ?? 1
+        height = try container.decodeIfPresent(Double.self, forKey: .height) ?? 1
+    }
+
     static let full = CropRect()
     var isFull: Bool { self == .full }
 
@@ -242,6 +259,17 @@ struct EditPoint: Codable, Equatable {
     var x: Double
     var y: Double
 
+    init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decodeIfPresent(Double.self, forKey: .x) ?? 0.5
+        y = try container.decodeIfPresent(Double.self, forKey: .y) ?? 0.5
+    }
+
     /// Into Core Image's bottom-left pixel space for a given extent.
     func inPixels(of extent: CGRect) -> CGPoint {
         CGPoint(x: extent.minX + x * extent.width,
@@ -259,6 +287,16 @@ struct BrushStroke: Codable, Equatable, Identifiable {
     /// same part of the photograph on a preview and on the original.
     var radius: Double = 0.06
     var isErase: Bool = false
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        points = try container.decodeIfPresent([EditPoint].self, forKey: .points) ?? []
+        radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0.06
+        isErase = try container.decodeIfPresent(Bool.self, forKey: .isErase) ?? false
+    }
 }
 
 /// A selective adjustment: where it applies, and what it does there.
@@ -274,6 +312,28 @@ struct EditMask: Codable, Equatable, Identifiable {
     var isEnabled: Bool = true
     var isInverted: Bool = false
     var tone = ToneAdjustments()
+
+    init() {}
+
+    /// Lenient, like every other part of a recipe.
+    ///
+    /// Masks written before brushes existed carry no `strokes` or `softness`,
+    /// and synthesised decoding requires every key. Worse, a mask that fails to
+    /// decode takes the whole recipe with it — `decodeIfPresent` throws on a key
+    /// that is present but malformed — so one old mask would silently discard
+    /// the tone and crop alongside it.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .linear
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        isInverted = try container.decodeIfPresent(Bool.self, forKey: .isInverted) ?? false
+        tone = try container.decodeIfPresent(ToneAdjustments.self, forKey: .tone) ?? ToneAdjustments()
+        start = try container.decodeIfPresent(EditPoint.self, forKey: .start) ?? EditPoint(x: 0.5, y: 0.15)
+        end = try container.decodeIfPresent(EditPoint.self, forKey: .end) ?? EditPoint(x: 0.5, y: 0.55)
+        strokes = try container.decodeIfPresent([BrushStroke].self, forKey: .strokes) ?? []
+        softness = try container.decodeIfPresent(Double.self, forKey: .softness) ?? 0.35
+    }
 
     /// For a linear gradient, the ramp runs from `start` (no effect) to `end`
     /// (full effect). For a radial one, `start` is the centre and `end` sits on
@@ -454,8 +514,12 @@ struct PhotoEditRecipe: Codable, Equatable {
         } else {
             tone = try ToneAdjustments(from: decoder)
         }
-        masks = try container.decodeIfPresent([EditMask].self, forKey: .masks) ?? []
-        crop = try container.decodeIfPresent(CropRect.self, forKey: .crop) ?? .full
+        // Each field falls back on its own. Losing the masks is bad; losing the
+        // exposure and the crop as collateral because one mask wouldn't parse is
+        // far worse, and indistinguishable from the photo never having been
+        // edited at all.
+        masks = (try? container.decodeIfPresent([EditMask].self, forKey: .masks)) ?? []
+        crop = (try? container.decodeIfPresent(CropRect.self, forKey: .crop)) ?? .full
     }
 
     /// Whole-image tone, then each mask over the result, then geometry.
@@ -882,6 +946,13 @@ final class PhotoEditSession: ObservableObject {
         guard let data,
               data.formatIdentifier == formatIdentifier,
               readableFormatVersions.contains(data.formatVersion) else { return nil }
-        return try? JSONDecoder().decode(PhotoEditRecipe.self, from: data.data)
+        do {
+            return try JSONDecoder().decode(PhotoEditRecipe.self, from: data.data)
+        } catch {
+            // A recipe this app wrote that it can no longer read means an edit
+            // silently reverting to the original, so it is worth knowing about.
+            editLog("decode: FAILED version=\(data.formatVersion) — \(error)")
+            return nil
+        }
     }
 }
