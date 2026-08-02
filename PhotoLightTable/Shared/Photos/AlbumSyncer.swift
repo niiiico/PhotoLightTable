@@ -88,12 +88,23 @@ final class AlbumSyncer: ObservableObject {
     /// the next baseline.
     var onBaselineUpdate: ((_ key: String, _ members: Set<String>) -> Void)?
 
+    /// Produces the desired state. Called once per pass rather than per
+    /// schedule: building it walks the library for every synced event, and
+    /// scheduling happens on every keypress.
+    var snapshotProvider: (() -> SyncSnapshot)?
+
+    /// Identifiers of the two global albums, remembered so a later pass can tell
+    /// "the album was emptied" from "the album is gone".
+    private static let pickedAlbumIDKey = "AlbumSync.pickedAlbumID"
+    private static let rejectedAlbumIDKey = "AlbumSync.rejectedAlbumID"
     private static let enabledKey = "AlbumSyncEnabled"
     private let debounce: Duration = .seconds(2)
     private var pendingTask: Task<Void, Never>?
-    private var snapshot = SyncSnapshot()
     private var isReconciling = false
     private var needsAnotherPass = false
+    /// Survives across passes so a failure stays visible even when another pass
+    /// is queued behind it.
+    @Published private(set) var lastError: String?
 
     init() {
         if UserDefaults.standard.object(forKey: Self.enabledKey) != nil {
@@ -103,11 +114,12 @@ final class AlbumSyncer: ObservableObject {
 
     // MARK: - Scheduling
 
-    func schedule(_ snapshot: SyncSnapshot) {
-        self.snapshot = snapshot
+    func schedule() {
         guard isEnabled else { return }
         // Cancelling a running reconcile would abort it between two albums,
-        // leaving a baseline recorded for one and not the other. Queue instead.
+        // leaving a baseline recorded for one and not the other. Queue instead —
+        // and the queued pass builds its own snapshot when it runs, so it can't
+        // replay stale baselines over newer work.
         guard !isReconciling else { needsAnotherPass = true; return }
 
         pendingTask?.cancel()
@@ -119,8 +131,7 @@ final class AlbumSyncer: ObservableObject {
         }
     }
 
-    func syncNow(_ snapshot: SyncSnapshot) {
-        self.snapshot = snapshot
+    func syncNow() {
         guard !isReconciling else { needsAnotherPass = true; return }
         pendingTask?.cancel()
         pendingTask = Task { await self.reconcileAll() }
@@ -129,6 +140,8 @@ final class AlbumSyncer: ObservableObject {
     // MARK: - Reconcile
 
     private func reconcileAll() async {
+        guard let snapshot = snapshotProvider?() else { return }
+
         status = .syncing
         isReconciling = true
         defer {
@@ -136,24 +149,29 @@ final class AlbumSyncer: ObservableObject {
             // A change that arrived mid-pass was deferred rather than dropped.
             if needsAnotherPass {
                 needsAnotherPass = false
-                schedule(snapshot)
+                schedule()
             }
         }
         var delta = RemoteRatingDelta()
 
         do {
             let root = try await findOrCreateFolder(id: nil, title: Self.rootFolderTitle, parent: nil)
+            let defaults = UserDefaults.standard
 
             let picked = try await reconcileAlbum(
+                id: defaults.string(forKey: Self.pickedAlbumIDKey),
                 title: Self.pickedAlbumTitle, desired: snapshot.picked,
-                baseline: snapshot.pickedBaseline, in: root, adoptLibraryWide: true)
+                baseline: snapshot.pickedBaseline, in: root, adoptLibraryWide: true,
+                storeIDAt: Self.pickedAlbumIDKey)
             delta.pickedAdded = picked.remoteAdded
             delta.pickedRemoved = picked.remoteRemoved
             onBaselineUpdate?(Self.globalPickedKey, picked.members)
 
             let rejected = try await reconcileAlbum(
+                id: defaults.string(forKey: Self.rejectedAlbumIDKey),
                 title: Self.rejectedAlbumTitle, desired: snapshot.rejected,
-                baseline: snapshot.rejectedBaseline, in: root, adoptLibraryWide: true)
+                baseline: snapshot.rejectedBaseline, in: root, adoptLibraryWide: true,
+                storeIDAt: Self.rejectedAlbumIDKey)
             delta.rejectedAdded = rejected.remoteAdded
             delta.rejectedRemoved = rejected.remoteRemoved
             onBaselineUpdate?(Self.globalRejectedKey, rejected.members)
@@ -163,10 +181,13 @@ final class AlbumSyncer: ObservableObject {
             }
 
             if !delta.isEmpty { onRemoteRatingChanges?(delta) }
+            lastError = nil
             status = .idle
         } catch is CancellationError {
             status = .idle
         } catch {
+            // Kept outside `status`, which the queued pass resets to .pending.
+            lastError = error.localizedDescription
             status = .failed(error.localizedDescription)
         }
     }
@@ -178,12 +199,16 @@ final class AlbumSyncer: ObservableObject {
         let pickedAlbum = try await findOrCreateAlbum(
             id: plan.pickedAlbumID, title: "\(plan.name) — Picked", in: folder)
 
-        let all = try await merge(album: album, desired: plan.allIDs, baseline: plan.allBaseline)
-        let picked = try await merge(album: pickedAlbum, desired: plan.pickedIDs, baseline: plan.pickedBaseline)
+        let all = try await merge(album: album.album, desired: plan.allIDs,
+                                  baseline: plan.allBaseline,
+                                  trustRemovals: !album.wasCreated)
+        let picked = try await merge(album: pickedAlbum.album, desired: plan.pickedIDs,
+                                     baseline: plan.pickedBaseline,
+                                     trustRemovals: !pickedAlbum.wasCreated)
 
         plan.persistIdentifiers(folder.localIdentifier,
-                                album.localIdentifier,
-                                pickedAlbum.localIdentifier)
+                                album.album.localIdentifier,
+                                pickedAlbum.album.localIdentifier)
         if !all.remoteAdded.isEmpty || !all.remoteRemoved.isEmpty {
             plan.applyMembershipDelta(all.remoteAdded, all.remoteRemoved)
         }
@@ -202,14 +227,28 @@ final class AlbumSyncer: ObservableObject {
         var remoteRemoved: Set<String> = []
     }
 
-    private func reconcileAlbum(title: String,
+    /// An album plus whether this pass had to create it.
+    private struct ResolvedAlbum {
+        var album: PHAssetCollection
+        var wasCreated: Bool
+    }
+
+    private func reconcileAlbum(id: String?,
+                                title: String,
                                 desired: Set<String>,
                                 baseline: Set<String>,
                                 in folder: PHCollectionList?,
-                                adoptLibraryWide: Bool = false) async throws -> MergeResult {
-        let album = try await findOrCreateAlbum(id: nil, title: title, in: folder,
-                                                adoptLibraryWide: adoptLibraryWide)
-        return try await merge(album: album, desired: desired, baseline: baseline)
+                                adoptLibraryWide: Bool = false,
+                                storeIDAt key: String? = nil) async throws -> MergeResult {
+        let resolved = try await findOrCreateAlbum(id: id, title: title, in: folder,
+                                                   adoptLibraryWide: adoptLibraryWide)
+        if let key {
+            UserDefaults.standard.set(resolved.album.localIdentifier, forKey: key)
+        }
+        return try await merge(album: resolved.album,
+                               desired: desired,
+                               baseline: baseline,
+                               trustRemovals: !resolved.wasCreated)
     }
 
     /// Three-way merge of one album.
@@ -220,7 +259,16 @@ final class AlbumSyncer: ObservableObject {
     /// made in Photos would be silently undone on the next pass.
     private func merge(album: PHAssetCollection,
                        desired: Set<String>,
-                       baseline: Set<String>) async throws -> MergeResult {
+                       baseline: Set<String>,
+                       trustRemovals: Bool) async throws -> MergeResult {
+        // An album that can't take content is not one whose emptiness means
+        // anything. Attempting the write anyway succeeds with zero mutations,
+        // which would then be recorded as agreement.
+        guard album.canPerform(.addContent),
+              album.canPerform(.removeContent) else {
+            throw SyncError.notEditable(album.localizedTitle ?? "album")
+        }
+
         let existingAssets = PHAsset.fetchAssets(in: album, options: nil)
         var existingByID: [String: PHAsset] = [:]
         existingAssets.enumerateObjects { asset, _, _ in
@@ -230,7 +278,11 @@ final class AlbumSyncer: ObservableObject {
 
         var result = MergeResult()
         result.remoteAdded = remote.subtracting(baseline)
-        result.remoteRemoved = baseline.subtracting(remote)
+        // Only believe a removal when the album we are reading is the one the
+        // baseline describes. A freshly created album is empty because it is
+        // new — reading that as "the user removed everything" is how deleting
+        // the LightTable folder in Photos would wipe every rating.
+        result.remoteRemoved = trustRemovals ? baseline.subtracting(remote) : []
 
         // Remote edits win for the assets they touch; every other asset keeps
         // whatever the app says.
@@ -244,12 +296,27 @@ final class AlbumSyncer: ObservableObject {
         let toAdd = toAddIDs.isEmpty ? [] : assets(withIDs: Array(toAddIDs))
         let toRemove = toRemoveIDs.compactMap { existingByID[$0] }
 
+        let didWrite = Flag()
         try await PHPhotoLibrary.shared().performChanges {
             guard let request = PHAssetCollectionChangeRequest(for: album, assets: existingAssets) else { return }
+            didWrite.value = true
             if !toAdd.isEmpty { request.addAssets(toAdd as NSFastEnumeration) }
             if !toRemove.isEmpty { request.removeAssets(toRemove as NSFastEnumeration) }
         }
+
+        // The guard above returns from the *change block*, not from here, so
+        // performChanges reports success having done nothing. Storing `final` as
+        // the baseline after that would tell the next pass those assets had been
+        // removed by hand, and it would delete the ratings to match.
+        guard didWrite.value else {
+            throw SyncError.notEditable(album.localizedTitle ?? "album")
+        }
         return result
+    }
+
+    /// A reference box, so the change block's result survives back to the caller.
+    private final class Flag: @unchecked Sendable {
+        var value = false
     }
 
     private func assets(withIDs ids: [String]) -> [PHAsset] {
@@ -328,7 +395,7 @@ final class AlbumSyncer: ObservableObject {
     private func findOrCreateAlbum(id: String?,
                                    title: String,
                                    in folder: PHCollectionList?,
-                                   adoptLibraryWide: Bool = false) async throws -> PHAssetCollection {
+                                   adoptLibraryWide: Bool = false) async throws -> ResolvedAlbum {
         if let id,
            let existing = PHAssetCollection.fetchAssetCollections(
             withLocalIdentifiers: [id], options: nil).firstObject {
@@ -338,12 +405,15 @@ final class AlbumSyncer: ObservableObject {
                 }
             }
             if let folder { try await ensure(existing, isChildOf: folder) }
-            return existing
+            return ResolvedAlbum(album: existing, wasCreated: false)
         }
 
         if let matching = album(titled: title, in: folder, adoptLibraryWide: adoptLibraryWide) {
             if let folder { try await ensure(matching, isChildOf: folder) }
-            return matching
+            // Adopted rather than created, but not the album the baseline was
+            // written against either — so its contents are not evidence of what
+            // the user removed.
+            return ResolvedAlbum(album: matching, wasCreated: id != nil)
         }
 
         var placeholder: PHObjectPlaceholder?
@@ -363,7 +433,7 @@ final class AlbumSyncer: ObservableObject {
                 withLocalIdentifiers: [newID], options: nil).firstObject else {
             throw SyncError.creationFailed(title)
         }
-        return created
+        return ResolvedAlbum(album: created, wasCreated: true)
     }
 
     /// With a parent, looks only among its children. Without one (the root
@@ -414,11 +484,14 @@ final class AlbumSyncer: ObservableObject {
 
     enum SyncError: LocalizedError {
         case creationFailed(String)
+        case notEditable(String)
 
         var errorDescription: String? {
             switch self {
             case .creationFailed(let title):
                 return "Could not create “\(title)” in Photos."
+            case .notEditable(let title):
+                return "“\(title)” can't be changed by this app — a shared or system album can't be kept in step."
             }
         }
     }

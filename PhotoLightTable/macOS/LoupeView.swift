@@ -102,6 +102,15 @@ struct LoupeView: View {
             .clipped()
             .contentShape(Rectangle())
             .overlay {
+                if !isCropping, selectedMaskID != nil, !edit.recipe.crop.isFull,
+                   let displayed = edit.preview ?? image {
+                    CropBoundsIndicator(
+                        crop: edit.recipe.crop,
+                        imageAspect: displayed.size.height > 0
+                            ? displayed.size.width / displayed.size.height : 1)
+                }
+            }
+            .overlay {
                 if !isCropping, let displayed = edit.preview ?? image,
                    let selected = selectedMask {
                     let aspect = displayed.size.height > 0
@@ -130,9 +139,9 @@ struct LoupeView: View {
                 }
             }
             // Zoom and pan would fight the handles for the same drags.
-            .gesture(isCropping ? nil : panGesture)
-            .simultaneousGesture(isCropping ? nil : magnifyGesture)
-            .onTapGesture(count: 2) { if !isCropping { zoomState.toggle() } }
+            .gesture(handlesAreActive ? nil : panGesture)
+            .simultaneousGesture(handlesAreActive ? nil : magnifyGesture)
+            .onTapGesture(count: 2) { if !handlesAreActive { zoomState.toggle() } }
         }
         .padding(14)
         // Drawn outside that padding, so the frame never touches the image.
@@ -628,11 +637,10 @@ struct LoupeView: View {
         }
         if kind == .brush { isErasing = false }
         edit.recipe.masks.append(mask)
-        selectedMaskID = mask.id
         // Cropping and mask placement both want the pointer, so adding a mask
-        // puts the handles away.
-        if isCropping { setCropping(false) }
-        renderForCurrentTool()
+        // puts the crop handles away.
+        isCropping = false
+        selectMask(mask.id)
     }
 
     private func maskRow(_ mask: EditMask) -> some View {
@@ -665,8 +673,7 @@ struct LoupeView: View {
                 Divider()
                 Button("Delete", role: .destructive) {
                     edit.recipe.masks.removeAll { $0.id == mask.id }
-                    if selectedMaskID == mask.id { selectedMaskID = nil }
-                    renderForCurrentTool()
+                    if selectedMaskID == mask.id { selectMask(nil) } else { renderForCurrentTool() }
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -681,7 +688,7 @@ struct LoupeView: View {
         .background(isSelected ? Color.accentColor.opacity(0.18) : .clear,
                     in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
-        .onTapGesture { selectedMaskID = isSelected ? nil : mask.id }
+        .onTapGesture { selectMask(isSelected ? nil : mask.id) }
     }
 
     @ViewBuilder
@@ -740,10 +747,36 @@ struct LoupeView: View {
         renderForCurrentTool()
     }
 
-    /// The frame being cropped has to be visible whole, so the preview drops the
-    /// crop while the handles are up and applies it again once they're down.
+    /// Overlays map the pointer against the unzoomed fitted rect, so a zoomed
+    /// view would place handles and strokes at a fraction of the intended
+    /// offset. Zoom is dropped when handles come up, and suppressed while
+    /// they're there.
+    private func selectMask(_ id: UUID?) {
+        selectedMaskID = id
+        if id != nil {
+            zoomState.reset()
+            if isCropping { isCropping = false }
+        }
+        renderForCurrentTool()
+    }
+
+    private var handlesAreActive: Bool {
+        isCropping || selectedMaskID != nil
+    }
+
+    /// The preview drops the crop whenever handles are being placed against the
+    /// whole frame.
+    ///
+    /// Mask geometry is stored against the uncropped image, so placing a mask
+    /// over a cropped preview would record coordinates relative to the crop and
+    /// render them relative to the full frame — the handle and the effect would
+    /// sit in different places, and further apart the tighter the crop.
+    private var showsUncroppedFrame: Bool {
+        isCropping || selectedMaskID != nil
+    }
+
     private func renderForCurrentTool() {
-        edit.renderPreview(applyCrop: !isCropping)
+        edit.renderPreview(applyCrop: !showsUncroppedFrame)
     }
 
     private func endEditing(commit: Bool) {
@@ -786,6 +819,8 @@ struct LoupeView: View {
                 await reloadAfterEdit()
                 app.move(by: offset, in: items, extendSelection: false)
             } catch {
+                // Left on the photo whose save failed, rather than carrying the
+                // unsaved recipe onto the next one.
                 editError = error.localizedDescription
             }
         }
@@ -806,15 +841,21 @@ struct LoupeView: View {
     // MARK: - State
 
     private func close() {
-        if isEditing, edit.isDirty, let current {
-            Task {
-                try? await edit.commit(for: current)
-                await reloadAfterEdit()
-                app.isLoupePresented = false
-            }
+        guard isEditing, edit.isDirty, let current else {
+            app.isLoupePresented = false
             return
         }
-        app.isLoupePresented = false
+        Task {
+            do {
+                try await edit.commit(for: current)
+                await reloadAfterEdit()
+                app.isLoupePresented = false
+            } catch {
+                // Staying open is the point: dismissing here would discard work
+                // that was never written, while looking like it had been saved.
+                editError = error.localizedDescription
+            }
+        }
     }
 
     private var currentPick: Pick {
@@ -884,6 +925,7 @@ struct LoupeView: View {
             ratings.clear([focusID])
             return .handled
         case "z":
+            guard !handlesAreActive else { return .ignored }
             zoomState.toggle()
             return .handled
         case "+", "=":

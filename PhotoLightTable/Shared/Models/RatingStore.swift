@@ -32,6 +32,13 @@ final class RatingStore: ObservableObject {
         self.syncer = syncer
         load()
 
+        // Built when a pass runs rather than when one is scheduled: it walks
+        // the library once per synced event, and scheduling happens on every
+        // keypress. It also means a queued pass reads current baselines rather
+        // than replaying the ones captured before the previous pass.
+        syncer.snapshotProvider = { [weak self] in
+            self?.snapshot() ?? SyncSnapshot()
+        }
         syncer.onRemoteRatingChanges = { [weak self] delta in
             self?.applyRemote(delta)
         }
@@ -155,9 +162,14 @@ final class RatingStore: ObservableObject {
         }
     }
 
+    /// Cheap: the snapshot is produced later, by the pass itself.
+    ///
+    /// The guard only suppresses the synchronous re-entry from folding remote
+    /// changes in. A later pass may still be scheduled by the view observing
+    /// `revision`, which is harmless — reconciliation converges.
     func scheduleSync() {
         guard !isApplyingRemote else { return }
-        syncer.schedule(snapshot())
+        syncer.schedule()
     }
 
     private func snapshot() -> SyncSnapshot {
@@ -180,6 +192,17 @@ final class RatingStore: ObservableObject {
 
         let picked = assetIDs(matching: .picked)
         let synced = events.filter(\.isSyncedToPhotos)
+
+        // Minted here and saved immediately. Left to a later, unrelated save, a
+        // crash in between would mean a different key next launch — and every
+        // baseline for the event orphaned.
+        var mintedKey = false
+        for event in synced where event.eventKey == nil {
+            event.eventKey = UUID().uuidString
+            mintedKey = true
+        }
+        if mintedKey { persist() }
+
         pruneBaselines(keeping: synced)
         return synced.map { event in
             let key = "event.\(event.stableKey)"
@@ -241,7 +264,7 @@ final class RatingStore: ObservableObject {
 
     /// Reconciles with Photos immediately, bypassing the debounce.
     func syncNow() {
-        syncer.syncNow(snapshot())
+        syncer.syncNow()
     }
 
     /// Drops baseline rows that belong to no current event.

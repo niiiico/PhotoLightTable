@@ -229,6 +229,16 @@ struct ContentView: View {
         }
     }
 
+    private func syncFailureButton(_ message: String) -> some View {
+        Button {
+            ratings.syncNow()
+        } label: {
+            Label("Sync failed", systemImage: "exclamationmark.triangle.fill")
+        }
+        .tint(.orange)
+        .help("\(message) — click to try again")
+    }
+
     /// Shows the active labels as dots rather than a generic icon, so the
     /// current colour filter is readable without opening the menu.
     private var colourFilter: some View {
@@ -266,24 +276,24 @@ struct ContentView: View {
     private var syncStatus: some View {
         switch syncer.status {
         case .idle:
-            Button {
-                ratings.syncNow()
-            } label: {
-                Label("Sync to Photos", systemImage: "arrow.triangle.2.circlepath")
+            // A queued pass resets `status` to .pending, so a failure would
+            // otherwise vanish before it was ever seen.
+            if let message = syncer.lastError {
+                syncFailureButton(message)
+            } else {
+                Button {
+                    ratings.syncNow()
+                } label: {
+                    Label("Sync to Photos", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .help("Update the LightTable albums in Photos now")
             }
-            .help("Update the LightTable albums in Photos now")
         case .pending, .syncing:
             ProgressView()
                 .controlSize(.small)
                 .help("Updating albums in Photos…")
         case .failed(let message):
-            Button {
-                ratings.syncNow()
-            } label: {
-                Label("Sync failed", systemImage: "exclamationmark.triangle.fill")
-            }
-            .tint(.orange)
-            .help(message)
+            syncFailureButton(message)
         }
     }
 

@@ -172,6 +172,10 @@ struct ToneAdjustments: Codable, Equatable {
             filter.inputImage = result
             // highlightAmount is neutral at 1 and shadowAmount at 0, so the two
             // map differently from the same -1…1 slider.
+            // Pinned rather than left at its default: this is a pixel radius,
+            // and an unpinned one would make recovery depend on whether the
+            // preview or the original is being rendered.
+            filter.radius = Float(min(result.extent.width, result.extent.height) * 0.004)
             filter.highlightAmount = Float(1 + highlights)
             filter.shadowAmount = Float(shadows)
             result = filter.outputImage ?? result
@@ -500,12 +504,14 @@ enum PhotoEditError: LocalizedError {
     case notEditable
     case couldNotOpen
     case couldNotRender
+    case staleSession
 
     var errorDescription: String? {
         switch self {
         case .notEditable: return "This photo can't be edited."
         case .couldNotOpen: return "Could not open the photo for editing."
         case .couldNotRender: return "Could not render the edited photo."
+        case .staleSession: return "The photo changed while it was open. Reopen it and try again."
         }
     }
 }
@@ -561,6 +567,11 @@ final class PhotoEditSession: ObservableObject {
     private let context = CIContext()
     private var previewTask: Task<Void, Never>?
     private var pendingApplyCrop = true
+    /// Which asset `input` was obtained for, so a commit can refuse a mismatch.
+    private var inputAssetID: String?
+    /// Bumped per `begin`, so a slow load that finishes after a newer one is
+    /// discarded instead of overwriting it.
+    private var generation = 0
 
     var isDirty: Bool { recipe != loadedRecipe }
     private var loadedRecipe = PhotoEditRecipe.neutral
@@ -569,23 +580,32 @@ final class PhotoEditSession: ObservableObject {
 
     func begin(for item: PhotoItem) async {
         reset()
+        generation += 1
+        let token = generation
         isLoading = true
-        defer { isLoading = false }
+        defer { if token == generation { isLoading = false } }
 
         // canPerform faults PHAssetAdjustmentProperties, which PhotoKit warns
         // about when it happens on the main queue. There is no fetch option to
         // prefetch them, so the read is moved off instead.
         let asset = item.asset
-        canEdit = await Task.detached { asset.canPerform(.content) }.value
+        let editable = await Task.detached { asset.canPerform(.content) }.value
+        // Arrowing to another photo while a slow load is in flight would
+        // otherwise let the older one land on top of the newer session — and a
+        // later commit would render one photo's pixels onto another's asset.
+        guard token == generation else { return }
+        canEdit = editable
         guard canEdit else { return }
 
         let loaded = await Self.loadInput(for: item.asset)
+        guard token == generation else { return }
         guard let loaded else {
             errorMessage = PhotoEditError.couldNotOpen.localizedDescription
             return
         }
 
         input = loaded
+        inputAssetID = item.id
         editLog("begin: canEdit=\(canEdit) hasAdjustments=\(loaded.adjustmentData != nil) fullSizeURL=\(loaded.fullSizeImageURL != nil)")
         hasExistingEdit = loaded.adjustmentData != nil
         loadedRecipe = Self.decode(loaded.adjustmentData) ?? .neutral
@@ -604,6 +624,7 @@ final class PhotoEditSession: ObservableObject {
         previewTask?.cancel()
         previewTask = nil
         input = nil
+        inputAssetID = nil
         previewBase = nil
         preview = nil
         recipe = .neutral
@@ -626,9 +647,10 @@ final class PhotoEditSession: ObservableObject {
         pendingApplyCrop = applyCrop
         guard previewTask == nil else { return }
 
+        let token = generation
         previewTask = Task { @MainActor [weak self] in
             await Task.yield()
-            guard let self else { return }
+            guard let self, token == self.generation else { return }
             self.previewTask = nil
             self.renderPreviewNow(applyCrop: self.pendingApplyCrop)
         }
@@ -646,7 +668,9 @@ final class PhotoEditSession: ObservableObject {
     // MARK: - Committing
 
     func commit(for item: PhotoItem) async throws {
-        guard let input else { throw PhotoEditError.couldNotOpen }
+        // The input describes one specific asset; committing it against another
+        // would render the wrong photo's pixels into it.
+        guard let input, inputAssetID == item.id else { throw PhotoEditError.staleSession }
 
         isCommitting = true
         defer { isCommitting = false }
@@ -718,7 +742,16 @@ final class PhotoEditSession: ObservableObject {
         // Full resolution off the main actor: this is a real decode and encode,
         // and on a 50MP file it is not a frame's worth of work.
         try await Task.detached(priority: .userInitiated) {
-            guard let base = CIImage(contentsOf: sourceURL) else {
+            // A RAW decoded by CIImage(contentsOf:) is ImageIO's baseline
+            // rendering, which is not what Photos shows and not what the
+            // adjustments were judged against. CIRAWFilter returns nil for
+            // anything that isn't RAW, so this is also the format test.
+            let base: CIImage
+            if let raw = CIRAWFilter(imageURL: sourceURL), let decoded = raw.outputImage {
+                base = decoded
+            } else if let decoded = CIImage(contentsOf: sourceURL) {
+                base = decoded
+            } else {
                 throw PhotoEditError.couldNotRender
             }
             let oriented = base.oriented(forExifOrientation: orientation)
@@ -762,11 +795,13 @@ final class PhotoEditSession: ObservableObject {
         try await PHPhotoLibrary.shared().performChanges {
             PHAssetChangeRequest(for: item.asset).revertAssetContentToOriginal()
         }
-        recipe = .neutral
-        loadedRecipe = .neutral
-        hasExistingEdit = false
-        renderPreview()
         record(.neutral, for: item)
+
+        // Reverting changes the asset's content version, so the input held from
+        // before it describes a version that no longer exists. Committing
+        // against it afterwards is rejected — or worse, writes a render derived
+        // from the pre-revert state.
+        await begin(for: item)
     }
 
     // MARK: - History

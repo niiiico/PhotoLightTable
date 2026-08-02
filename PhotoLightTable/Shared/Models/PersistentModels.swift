@@ -106,6 +106,7 @@ final class LightTableEvent {
          excludedAssetIDs: [String] = [],
          explicitMembership: Bool = false,
          createdAt: Date = .now) {
+        self.eventKey = UUID().uuidString
         self.name = name
         self.startDate = startDate
         self.endDate = endDate
