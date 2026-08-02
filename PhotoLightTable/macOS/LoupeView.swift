@@ -551,7 +551,9 @@ struct LoupeView: View {
                 setTone(adjustment, 0)
                 renderForCurrentTool()
             }
-            .help("\(adjustment.label) — double-click to reset")
+            .help(adjustment.isSpatial
+                  ? "\(adjustment.label) — negative sharpens, positive blurs. Double-click to reset"
+                  : "\(adjustment.label) — double-click to reset")
 
             Slider(value: Binding(
                 get: { activeTone[adjustment] },

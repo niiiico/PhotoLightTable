@@ -48,6 +48,9 @@ struct CropRect: Codable, Equatable {
 enum Adjustment: String, CaseIterable, Identifiable, Codable {
     case exposure, contrast, saturation, vibrance
     case highlights, shadows, warmth, tint
+    /// Negative sharpens, positive blurs. Spatial rather than tonal, but it
+    /// belongs in the same set so a mask gets it for nothing.
+    case blur
 
     var id: String { rawValue }
 
@@ -61,12 +64,16 @@ enum Adjustment: String, CaseIterable, Identifiable, Codable {
         case .shadows: return "Shadows"
         case .warmth: return "Warmth"
         case .tint: return "Tint"
+        case .blur: return "Blur"
         }
     }
 
     var range: ClosedRange<Double> {
         self == .exposure ? -3...3 : -1...1
     }
+
+    /// Blur reads as "sharp ← → blurred" rather than as a signed amount.
+    var isSpatial: Bool { self == .blur }
 
     func formatted(_ value: Double) -> String {
         self == .exposure
@@ -88,6 +95,7 @@ struct ToneAdjustments: Codable, Equatable {
     var shadows: Double = 0
     var warmth: Double = 0
     var tint: Double = 0
+    var blur: Double = 0
 
     static let neutral = ToneAdjustments()
     var isNeutral: Bool { self == .neutral }
@@ -103,6 +111,7 @@ struct ToneAdjustments: Codable, Equatable {
             case .shadows: return shadows
             case .warmth: return warmth
             case .tint: return tint
+            case .blur: return blur
             }
         }
         set {
@@ -115,6 +124,7 @@ struct ToneAdjustments: Codable, Equatable {
             case .shadows: shadows = newValue
             case .warmth: warmth = newValue
             case .tint: tint = newValue
+            case .blur: blur = newValue
             }
         }
     }
@@ -141,6 +151,7 @@ struct ToneAdjustments: Codable, Equatable {
         shadows = try container.decodeIfPresent(Double.self, forKey: .shadows) ?? 0
         warmth = try container.decodeIfPresent(Double.self, forKey: .warmth) ?? 0
         tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? 0
+        blur = try container.decodeIfPresent(Double.self, forKey: .blur) ?? 0
     }
 
     /// The order follows how the adjustments are meant to be read: overall
@@ -189,7 +200,36 @@ struct ToneAdjustments: Codable, Equatable {
             filter.amount = Float(vibrance)
             result = filter.outputImage ?? result
         }
+
+        if blur != 0 { result = Self.blurred(result, amount: blur) }
         return result
+    }
+
+    /// Blur radius is a fraction of the image rather than a pixel count.
+    ///
+    /// A 20px blur on a display-size preview and a 20px blur on a 50MP original
+    /// are entirely different effects, so a pixel radius would mean the preview
+    /// and the committed render disagree — the one thing this whole recipe
+    /// design exists to prevent.
+    private static func blurred(_ image: CIImage, amount: Double) -> CIImage {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else { return image }
+        let reference = min(extent.width, extent.height)
+
+        if amount > 0 {
+            let filter = CIFilter.gaussianBlur()
+            // Sampling beyond the edge would otherwise pull in transparency and
+            // leave a soft, darkened border around the whole frame.
+            filter.inputImage = image.clampedToExtent()
+            filter.radius = Float(amount * reference * 0.04)
+            return filter.outputImage?.cropped(to: extent) ?? image
+        }
+
+        let filter = CIFilter.sharpenLuminance()
+        filter.inputImage = image.clampedToExtent()
+        filter.sharpness = Float(-amount * 1.5)
+        filter.radius = Float(reference * 0.004)
+        return filter.outputImage?.cropped(to: extent) ?? image
     }
 }
 
