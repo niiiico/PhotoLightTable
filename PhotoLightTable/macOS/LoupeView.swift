@@ -54,9 +54,14 @@ struct LoupeView: View {
         .animation(.easeOut(duration: 0.12), value: currentPick)
         .onKeyPress(action: handleKey)
         .task(id: current?.id) {
-            if isEditing { endEditing() }
             zoomState.reset()
             await loadImage()
+            // Editing stays on across photos, so a run of frames can be worked
+            // through without leaving and re-entering the panel each time.
+            if isEditing, let current {
+                await edit.begin(for: current)
+                renderForCurrentTool()
+            }
         }
         .task(id: current?.id) {
             guard let current else { return }
@@ -274,125 +279,96 @@ struct LoupeView: View {
 
     // MARK: - Editing
 
+    /// One panel for the whole session. Crop is a tool that toggles its handles
+    /// rather than a mode with its own confirmation: every change accumulates in
+    /// the recipe, and the session is written once, at the end.
     private var editBar: some View {
-        isCropping ? AnyView(cropBar) : AnyView(adjustBar)
-    }
+        VStack(spacing: 8) {
+            HStack(spacing: 14) {
+                Text("Exposure")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
 
-    private var cropBar: some View {
-        HStack(spacing: 14) {
-            Picker("Aspect", selection: $cropAspect) {
-                ForEach(CropAspect.allCases) { option in
-                    Text(option.label).tag(option)
+                Slider(value: Binding(
+                    get: { edit.recipe.exposure },
+                    set: { edit.recipe.exposure = $0; renderForCurrentTool() }
+                ), in: -3...3, step: 0.05)
+
+                Text(String(format: "%+.2f EV", edit.recipe.exposure))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+
+                Button("Reset All") {
+                    edit.recipe = .neutral
+                    renderForCurrentTool()
                 }
+                .disabled(edit.recipe.isNeutral)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 380)
 
-            Button("Reset") {
-                edit.recipe.crop = .full
-                cropAspect = .free
-            }
-            .disabled(edit.recipe.crop.isFull)
+            HStack(spacing: 12) {
+                Toggle(isOn: Binding(get: { isCropping }, set: { setCropping($0) })) {
+                    Label("Crop", systemImage: "crop")
+                        .labelStyle(.iconOnly)
+                }
+                .toggleStyle(.button)
+                .help("Crop this photo (C)")
 
-            Spacer(minLength: 8)
+                if isCropping {
+                    Picker("Aspect", selection: $cropAspect) {
+                        ForEach(CropAspect.allCases) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 320)
 
-            Button("Done") { endCropping() }
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
-    }
+                    Button("Reset Crop") { edit.recipe.crop = .full }
+                        .disabled(edit.recipe.crop.isFull)
+                }
 
-    private var adjustBar: some View {
-        HStack(spacing: 14) {
-            Button {
-                beginCropping()
-            } label: {
-                Label("Crop", systemImage: "crop")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Crop this photo (C)")
+                Spacer(minLength: 8)
 
-            Divider().frame(height: 16)
+                if let editError {
+                    Label(editError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                }
 
-            Label("Exposure", systemImage: "plusminus.circle")
-                .labelStyle(.titleOnly)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize()
+                if edit.isCommitting { ProgressView().controlSize(.small) }
 
-            Slider(value: Binding(
-                get: { edit.recipe.exposure },
-                set: { edit.recipe.exposure = $0; edit.renderPreview() }
-            ), in: -3...3, step: 0.05)
-            .frame(minWidth: 180)
+                Button {
+                    showsHistory.toggle()
+                } label: {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                        .labelStyle(.iconOnly)
+                }
+                .help("Earlier versions of this photo")
+                .popover(isPresented: $showsHistory, arrowEdge: .top) { historyPopover }
 
-            Text(String(format: "%+.2f EV", edit.recipe.exposure))
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .fixedSize()
-
-            Button("Reset") {
-                edit.recipe = .neutral
-                edit.renderPreview()
-            }
-            .disabled(edit.recipe.isNeutral)
-
-            Divider().frame(height: 16)
-
-            if edit.hasExistingEdit {
-                Button("Revert to Original") {
-                    Task {
+                if edit.hasExistingEdit {
+                    Button("Revert to Original") {
                         guard let current else { return }
-                        do {
-                            try await edit.revert(for: current)
-                            await reloadAfterEdit()
-                        } catch { editError = error.localizedDescription }
+                        Task {
+                            do {
+                                try await edit.revert(for: current)
+                                await reloadAfterEdit()
+                            } catch { editError = error.localizedDescription }
+                        }
                     }
+                    .help("Discards every edit, including ones made in other apps")
                 }
-                .help("Discards every edit, including ones made in other apps")
-            }
 
-            Button {
-                showsHistory.toggle()
-            } label: {
-                Label("History", systemImage: "clock.arrow.circlepath")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Earlier versions of this photo")
-            .popover(isPresented: $showsHistory, arrowEdge: .top) {
-                historyPopover
-            }
+                Button("Cancel") { endEditing(commit: false) }
 
-            Button("Cancel") { endEditing() }
-
-            Button("Apply") {
-                Task {
-                    guard let current else { return }
-                    do {
-                        try await edit.commit(for: current)
-                        await reloadAfterEdit()
-                        // The panel stays open with the applied value in place:
-                        // closing it and zeroing the slider reads as the edit
-                        // having been discarded.
-                    } catch {
-                        editLog("commit: FAILED \(error)")
-                        editError = error.localizedDescription
-                    }
+                Button(edit.isDirty ? "Save" : "Done") {
+                    endEditing(commit: true)
                 }
-            }
-            .keyboardShortcut(.defaultAction)
-            .disabled(!edit.isDirty || edit.isCommitting)
-
-            if edit.isCommitting { ProgressView().controlSize(.small) }
-
-            if let editError {
-                Label(editError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .lineLimit(2)
+                .keyboardShortcut(.defaultAction)
+                .disabled(edit.isCommitting)
             }
         }
         .padding(.horizontal, 16)
@@ -444,8 +420,10 @@ struct LoupeView: View {
         Button {
             guard let current else { return }
             Task {
-                try? await edit.restore(version, for: current)
-                await reloadAfterEdit()
+                do {
+                    try await edit.restore(version, for: current)
+                    await reloadAfterEdit()
+                } catch { editError = error.localizedDescription }
                 showsHistory = false
             }
         } label: {
@@ -479,26 +457,62 @@ struct LoupeView: View {
         edit.modelContext = modelContext
         await edit.begin(for: current)
         if !edit.canEdit { isEditing = false }
+        renderForCurrentTool()
     }
 
-    private func beginCropping() {
-        isCropping = true
-        zoomState.reset()
-        // The frame being cropped has to be shown whole, so the preview drops
-        // the crop while the handles are up.
-        edit.renderPreview(applyCrop: false)
+    private func setCropping(_ active: Bool) {
+        isCropping = active
+        if active { zoomState.reset() }
+        renderForCurrentTool()
     }
 
-    private func endCropping() {
-        isCropping = false
-        edit.renderPreview()
+    /// The frame being cropped has to be visible whole, so the preview drops the
+    /// crop while the handles are up and applies it again once they're down.
+    private func renderForCurrentTool() {
+        edit.renderPreview(applyCrop: !isCropping)
     }
 
-    private func endEditing() {
-        isEditing = false
-        isCropping = false
-        editError = nil
-        edit.cancel()
+    private func endEditing(commit: Bool) {
+        guard commit, edit.isDirty, let current else {
+            isEditing = false
+            isCropping = false
+            editError = nil
+            edit.cancel()
+            return
+        }
+
+        Task {
+            do {
+                try await edit.commit(for: current)
+                await reloadAfterEdit()
+                isEditing = false
+                isCropping = false
+                editError = nil
+                edit.cancel()
+            } catch {
+                // Stay open on failure: closing would look like the work was
+                // saved when it wasn't.
+                editError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Moving to another photo saves the session rather than discarding it —
+    /// the changes were made deliberately, and everything here is revertible.
+    private func navigate(by offset: Int) {
+        guard isEditing, edit.isDirty, let current else {
+            app.move(by: offset, in: items, extendSelection: false)
+            return
+        }
+        Task {
+            do {
+                try await edit.commit(for: current)
+                await reloadAfterEdit()
+                app.move(by: offset, in: items, extendSelection: false)
+            } catch {
+                editError = error.localizedDescription
+            }
+        }
     }
 
     /// The committed render replaces the asset's image, so the copy on screen —
@@ -516,6 +530,14 @@ struct LoupeView: View {
     // MARK: - State
 
     private func close() {
+        if isEditing, edit.isDirty, let current {
+            Task {
+                try? await edit.commit(for: current)
+                await reloadAfterEdit()
+                app.isLoupePresented = false
+            }
+            return
+        }
         app.isLoupePresented = false
     }
 
@@ -540,12 +562,12 @@ struct LoupeView: View {
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         switch press.key {
         case .leftArrow:
-            app.move(by: -1, in: items, extendSelection: false); return .handled
+            navigate(by: -1); return .handled
         case .rightArrow:
-            app.move(by: 1, in: items, extendSelection: false); return .handled
+            navigate(by: 1); return .handled
         case .escape:
-            if isCropping { endCropping() }
-            else if isEditing { endEditing() }
+            if isCropping { setCropping(false) }
+            else if isEditing { endEditing(commit: false) }
             else { close() }
             return .handled
         case .space, .return:
@@ -560,12 +582,12 @@ struct LoupeView: View {
               let focusID = app.focusID else { return .ignored }
 
         if character == "c", isEditing {
-            if isCropping { endCropping() } else { beginCropping() }
+            setCropping(!isCropping)
             return .handled
         }
 
         if character == "e" {
-            if isEditing { endEditing() } else { Task { await beginEditing() } }
+            if isEditing { endEditing(commit: true) } else { Task { await beginEditing() } }
             return .handled
         }
 
