@@ -103,21 +103,18 @@ struct LoupeView: View {
             .contentShape(Rectangle())
             .overlay {
                 if !isCropping, let displayed = edit.preview ?? image,
-                   let index = selectedMaskIndex {
+                   let selected = selectedMask {
                     let aspect = displayed.size.height > 0
                         ? displayed.size.width / displayed.size.height : 1
-                    let binding = Binding(
-                        get: { edit.recipe.masks[index] },
-                        set: { edit.recipe.masks[index] = $0; renderForCurrentTool() })
 
-                    if edit.recipe.masks[index].kind == .brush {
-                        BrushOverlay(mask: binding,
+                    if selected.kind == .brush {
+                        BrushOverlay(mask: maskBinding(selected.id),
                                      imageAspect: aspect,
                                      brushRadius: brushRadius,
                                      isErasing: isErasing,
                                      showsPaint: true)
                     } else {
-                        MaskOverlay(mask: binding, imageAspect: aspect)
+                        MaskOverlay(mask: maskBinding(selected.id), imageAspect: aspect)
                     }
                 }
             }
@@ -325,7 +322,7 @@ struct LoupeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 10) {
-                        sectionHeading(selectedMaskIndex == nil ? "Adjust" : "Adjust Mask",
+                        sectionHeading(selectedMask == nil ? "Adjust" : "Adjust Mask",
                                        isReset: activeTone.isNeutral) {
                             for adjustment in Adjustment.allCases { setTone(adjustment, 0) }
                             renderForCurrentTool()
@@ -359,9 +356,8 @@ struct LoupeView: View {
                                 maskRow(mask)
                             }
 
-                            if let index = selectedMaskIndex,
-                               edit.recipe.masks[index].kind == .brush {
-                                brushControls(index)
+                            if let selected = selectedMask, selected.kind == .brush {
+                                brushControls(selected.id)
                             }
                         }
                     }
@@ -582,21 +578,42 @@ struct LoupeView: View {
 
     // MARK: - Masks
 
-    private var selectedMaskIndex: Int? {
+    private var selectedMask: EditMask? {
         guard let selectedMaskID else { return nil }
-        return edit.recipe.masks.firstIndex { $0.id == selectedMaskID }
+        return edit.recipe.masks.first { $0.id == selectedMaskID }
+    }
+
+    /// Masks are addressed by identity rather than position.
+    ///
+    /// A binding that captures an index reads a stale slot the moment the array
+    /// changes underneath it — which is what saving does, since committing
+    /// resets the recipe while the overlay is still on screen. That crashed with
+    /// an out-of-range access rather than degrading.
+    private func maskBinding(_ id: UUID) -> Binding<EditMask> {
+        Binding(
+            get: { edit.recipe.masks.first { $0.id == id } ?? EditMask() },
+            set: { newValue in
+                guard let index = edit.recipe.masks.firstIndex(where: { $0.id == id }) else { return }
+                edit.recipe.masks[index] = newValue
+                renderForCurrentTool()
+            })
+    }
+
+    private func updateMask(_ id: UUID, _ change: (inout EditMask) -> Void) {
+        guard let index = edit.recipe.masks.firstIndex(where: { $0.id == id }) else { return }
+        change(&edit.recipe.masks[index])
+        renderForCurrentTool()
     }
 
     /// The sliders edit whichever tone is in focus — the whole image, or the
     /// selected mask. One set of controls, one meaning at a time.
     private var activeTone: ToneAdjustments {
-        guard let index = selectedMaskIndex else { return edit.recipe.tone }
-        return edit.recipe.masks[index].tone
+        selectedMask?.tone ?? edit.recipe.tone
     }
 
     private func setTone(_ adjustment: Adjustment, _ value: Double) {
-        if let index = selectedMaskIndex {
-            edit.recipe.masks[index].tone[adjustment] = value
+        if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
+            updateMask(id) { $0.tone[adjustment] = value }
         } else {
             edit.recipe.tone[adjustment] = value
         }
@@ -622,10 +639,7 @@ struct LoupeView: View {
         let isSelected = mask.id == selectedMaskID
         return HStack(spacing: 8) {
             Button {
-                if let index = edit.recipe.masks.firstIndex(where: { $0.id == mask.id }) {
-                    edit.recipe.masks[index].isEnabled.toggle()
-                    renderForCurrentTool()
-                }
+                updateMask(mask.id) { $0.isEnabled.toggle() }
             } label: {
                 Image(systemName: mask.isEnabled ? "eye" : "eye.slash")
                     .foregroundStyle(.secondary)
@@ -646,10 +660,7 @@ struct LoupeView: View {
 
             Menu {
                 Button(mask.isInverted ? "Uninvert" : "Invert") {
-                    if let index = edit.recipe.masks.firstIndex(where: { $0.id == mask.id }) {
-                        edit.recipe.masks[index].isInverted.toggle()
-                        renderForCurrentTool()
-                    }
+                    updateMask(mask.id) { $0.isInverted.toggle() }
                 }
                 Divider()
                 Button("Delete", role: .destructive) {
@@ -674,7 +685,8 @@ struct LoupeView: View {
     }
 
     @ViewBuilder
-    private func brushControls(_ index: Int) -> some View {
+    private func brushControls(_ id: UUID) -> some View {
+        let mask = edit.recipe.masks.first { $0.id == id } ?? EditMask()
         VStack(alignment: .leading, spacing: 8) {
             Picker("", selection: $isErasing) {
                 Text("Paint").tag(false)
@@ -698,25 +710,24 @@ struct LoupeView: View {
                 HStack {
                     Text("Softness").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(edit.recipe.masks[index].softness * 100))")
+                    Text("\(Int(mask.softness * 100))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
                 Slider(value: Binding(
-                    get: { edit.recipe.masks[index].softness },
-                    set: { edit.recipe.masks[index].softness = $0; renderForCurrentTool() }
+                    get: { mask.softness },
+                    set: { value in updateMask(id) { $0.softness = value } }
                 ), in: 0...1)
                 .controlSize(.small)
             }
 
             Button("Clear Strokes") {
-                edit.recipe.masks[index].strokes = []
-                renderForCurrentTool()
+                updateMask(id) { $0.strokes = [] }
             }
             .buttonStyle(.plain)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .disabled(edit.recipe.masks[index].strokes.isEmpty)
+            .disabled(mask.strokes.isEmpty)
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
@@ -739,6 +750,7 @@ struct LoupeView: View {
         guard commit, edit.isDirty, let current else {
             isEditing = false
             isCropping = false
+            selectedMaskID = nil
             editError = nil
             edit.cancel()
             return
@@ -750,6 +762,7 @@ struct LoupeView: View {
                 await reloadAfterEdit()
                 isEditing = false
                 isCropping = false
+                selectedMaskID = nil
                 editError = nil
                 edit.cancel()
             } catch {
