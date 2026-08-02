@@ -39,24 +39,119 @@ struct CropRect: Codable, Equatable {
     }
 }
 
+/// A tonal adjustment, described once so the UI can be generated from it rather
+/// than repeating a slider per parameter.
+///
+/// Every value is neutral at zero and runs -1…1, apart from exposure which is in
+/// stops. The mapping into each filter's own units happens in `apply`, so the
+/// stored recipe stays in terms a person would recognise.
+enum Adjustment: String, CaseIterable, Identifiable, Codable {
+    case exposure, contrast, saturation, vibrance
+    case highlights, shadows, warmth, tint
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .exposure: return "Exposure"
+        case .contrast: return "Contrast"
+        case .saturation: return "Saturation"
+        case .vibrance: return "Vibrance"
+        case .highlights: return "Highlights"
+        case .shadows: return "Shadows"
+        case .warmth: return "Warmth"
+        case .tint: return "Tint"
+        }
+    }
+
+    var range: ClosedRange<Double> {
+        self == .exposure ? -3...3 : -1...1
+    }
+
+    func formatted(_ value: Double) -> String {
+        self == .exposure
+            ? String(format: "%+.2f EV", value)
+            : String(format: "%+.0f", value * 100)
+    }
+}
+
 struct PhotoEditRecipe: Codable, Equatable {
-    /// Exposure in stops.
     var exposure: Double = 0
+    var contrast: Double = 0
+    var saturation: Double = 0
+    var vibrance: Double = 0
+    var highlights: Double = 0
+    var shadows: Double = 0
+    var warmth: Double = 0
+    var tint: Double = 0
     var crop: CropRect = .full
 
     static let neutral = PhotoEditRecipe()
     var isNeutral: Bool { self == .neutral }
 
+    subscript(adjustment: Adjustment) -> Double {
+        get {
+            switch adjustment {
+            case .exposure: return exposure
+            case .contrast: return contrast
+            case .saturation: return saturation
+            case .vibrance: return vibrance
+            case .highlights: return highlights
+            case .shadows: return shadows
+            case .warmth: return warmth
+            case .tint: return tint
+            }
+        }
+        set {
+            switch adjustment {
+            case .exposure: exposure = newValue
+            case .contrast: contrast = newValue
+            case .saturation: saturation = newValue
+            case .vibrance: vibrance = newValue
+            case .highlights: highlights = newValue
+            case .shadows: shadows = newValue
+            case .warmth: warmth = newValue
+            case .tint: tint = newValue
+            }
+        }
+    }
+
     var summary: String {
-        var parts: [String] = []
-        if exposure != 0 { parts.append(String(format: "%+.2f EV", exposure)) }
+        var parts = Adjustment.allCases
+            .filter { self[$0] != 0 }
+            .map { "\($0.label) \($0.formatted(self[$0]))" }
         if !crop.isFull { parts.append("Cropped") }
         return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
     }
 
+    /// Decoded leniently so a recipe written before a field existed still opens.
+    ///
+    /// Swift's synthesised decoding requires every key to be present, defaults
+    /// notwithstanding — which would make each new parameter silently orphan
+    /// every edit made before it, since a recipe that fails to decode reads as
+    /// no edit at all.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        exposure = try container.decodeIfPresent(Double.self, forKey: .exposure) ?? 0
+        contrast = try container.decodeIfPresent(Double.self, forKey: .contrast) ?? 0
+        saturation = try container.decodeIfPresent(Double.self, forKey: .saturation) ?? 0
+        vibrance = try container.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0
+        highlights = try container.decodeIfPresent(Double.self, forKey: .highlights) ?? 0
+        shadows = try container.decodeIfPresent(Double.self, forKey: .shadows) ?? 0
+        warmth = try container.decodeIfPresent(Double.self, forKey: .warmth) ?? 0
+        tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? 0
+        crop = try container.decodeIfPresent(CropRect.self, forKey: .crop) ?? .full
+    }
+
+    init() {}
+
     /// Tone first, geometry last: cropping is a change of frame, and applying it
     /// before the adjustments would leave every later mask defined against a
     /// different extent depending on whether a crop happened to be set.
+    ///
+    /// The order within the tonal stack follows how the adjustments are meant to
+    /// be read: overall exposure, then recovery at each end of the range, then
+    /// white balance, then contrast and saturation on top of a settled image.
     func apply(to image: CIImage, applyCrop: Bool = true) -> CIImage {
         var result = image
 
@@ -64,6 +159,40 @@ struct PhotoEditRecipe: Codable, Equatable {
             let filter = CIFilter.exposureAdjust()
             filter.inputImage = result
             filter.ev = Float(exposure)
+            result = filter.outputImage ?? result
+        }
+
+        if highlights != 0 || shadows != 0 {
+            let filter = CIFilter.highlightShadowAdjust()
+            filter.inputImage = result
+            // highlightAmount is neutral at 1 and shadowAmount at 0, so the two
+            // map differently from the same -1…1 slider.
+            filter.highlightAmount = Float(1 + highlights)
+            filter.shadowAmount = Float(shadows)
+            result = filter.outputImage ?? result
+        }
+
+        if warmth != 0 || tint != 0 {
+            let filter = CIFilter.temperatureAndTint()
+            filter.inputImage = result
+            filter.neutral = CIVector(x: 6500, y: 0)
+            filter.targetNeutral = CIVector(x: 6500 + warmth * 2500, y: tint * 100)
+            result = filter.outputImage ?? result
+        }
+
+        if contrast != 0 || saturation != 0 {
+            let filter = CIFilter.colorControls()
+            filter.inputImage = result
+            filter.brightness = 0
+            filter.contrast = Float(1 + contrast * 0.5)
+            filter.saturation = Float(1 + saturation)
+            result = filter.outputImage ?? result
+        }
+
+        if vibrance != 0 {
+            let filter = CIFilter.vibrance()
+            filter.inputImage = result
+            filter.amount = Float(vibrance)
             result = filter.outputImage ?? result
         }
 
@@ -130,7 +259,12 @@ final class PhotoEditSession: ObservableObject {
     /// pair is handed back the original image plus the recipe; anything else
     /// sees the rendered result.
     static let formatIdentifier = "com.photolighttable.edit"
-    static let formatVersion = "1"
+    static let formatVersion = "2"
+    /// Every version this build can still read. Dropping "1" here would make
+    /// existing edits look like another app's work: PhotoKit would hand back the
+    /// rendered image instead of the original, and the next edit would compound
+    /// on top of the last one.
+    static let readableFormatVersions: Set<String> = ["1", "2"]
 
     @Published var recipe = PhotoEditRecipe()
     @Published private(set) var preview: PlatformImage?
@@ -171,7 +305,7 @@ final class PhotoEditSession: ObservableObject {
         // already baked in. Returning false here would compound edits.
         options.canHandleAdjustmentData = { data in
             data.formatIdentifier == Self.formatIdentifier
-                && data.formatVersion == Self.formatVersion
+                && Self.readableFormatVersions.contains(data.formatVersion)
         }
 
         let loaded: PHContentEditingInput? = await withCheckedContinuation { continuation in
@@ -335,7 +469,7 @@ final class PhotoEditSession: ObservableObject {
     private static func decode(_ data: PHAdjustmentData?) -> PhotoEditRecipe? {
         guard let data,
               data.formatIdentifier == formatIdentifier,
-              data.formatVersion == formatVersion else { return nil }
+              readableFormatVersions.contains(data.formatVersion) else { return nil }
         return try? JSONDecoder().decode(PhotoEditRecipe.self, from: data.data)
     }
 }

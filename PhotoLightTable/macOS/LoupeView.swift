@@ -284,27 +284,14 @@ struct LoupeView: View {
     /// the recipe, and the session is written once, at the end.
     private var editBar: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 14) {
-                Text("Exposure")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-
-                Slider(value: Binding(
-                    get: { edit.recipe.exposure },
-                    set: { edit.recipe.exposure = $0; renderForCurrentTool() }
-                ), in: -3...3, step: 0.05)
-
-                Text(String(format: "%+.2f EV", edit.recipe.exposure))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-
-                Button("Reset All") {
-                    edit.recipe = .neutral
-                    renderForCurrentTool()
+            // Two columns of compact sliders: eight parameters in one row would
+            // leave each too short to place precisely.
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 18),
+                                GridItem(.flexible(), spacing: 18)],
+                      spacing: 6) {
+                ForEach(Adjustment.allCases) { adjustment in
+                    adjustmentSlider(adjustment)
                 }
-                .disabled(edit.recipe.isNeutral)
             }
 
             HStack(spacing: 12) {
@@ -458,6 +445,33 @@ struct LoupeView: View {
         await edit.begin(for: current)
         if !edit.canEdit { isEditing = false }
         renderForCurrentTool()
+    }
+
+    /// Double-click the label to return one adjustment to neutral, which is
+    /// quicker than dragging a slider back to exactly zero.
+    private func adjustmentSlider(_ adjustment: Adjustment) -> some View {
+        HStack(spacing: 8) {
+            Text(adjustment.label)
+                .font(.caption)
+                .foregroundStyle(edit.recipe[adjustment] == 0 ? .secondary : .primary)
+                .frame(width: 66, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    edit.recipe[adjustment] = 0
+                    renderForCurrentTool()
+                }
+                .help("\(adjustment.label) — double-click to reset")
+
+            Slider(value: Binding(
+                get: { edit.recipe[adjustment] },
+                set: { edit.recipe[adjustment] = $0; renderForCurrentTool() }
+            ), in: adjustment.range)
+
+            Text(adjustment.formatted(edit.recipe[adjustment]))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 58, alignment: .trailing)
+        }
     }
 
     private func setCropping(_ active: Bool) {
