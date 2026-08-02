@@ -27,6 +27,7 @@ struct MaskOverlay: View {
                 handle(at: p1, filled: true)
                     .gesture(drag(for: \.end, in: frame))
             }
+            .opacity(mask.kind == .brush ? 0 : 1)
         }
     }
 
@@ -50,6 +51,9 @@ struct MaskOverlay: View {
             }
             .stroke(.white.opacity(0.5), lineWidth: 1)
             .allowsHitTesting(false)
+
+        case .brush:
+            EmptyView()
 
         case .radial:
             let radius = hypot(p1.x - p0.x, p1.y - p0.y)

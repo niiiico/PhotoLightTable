@@ -29,6 +29,8 @@ struct LoupeView: View {
     @State private var isCropping = false
     @State private var cropAspect: CropAspect = .free
     @State private var selectedMaskID: UUID?
+    @State private var brushRadius: Double = 0.06
+    @State private var isErasing = false
     @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
@@ -102,12 +104,21 @@ struct LoupeView: View {
             .overlay {
                 if !isCropping, let displayed = edit.preview ?? image,
                    let index = selectedMaskIndex {
-                    MaskOverlay(mask: Binding(
+                    let aspect = displayed.size.height > 0
+                        ? displayed.size.width / displayed.size.height : 1
+                    let binding = Binding(
                         get: { edit.recipe.masks[index] },
-                        set: { edit.recipe.masks[index] = $0; renderForCurrentTool() }
-                    ),
-                    imageAspect: displayed.size.height > 0
-                        ? displayed.size.width / displayed.size.height : 1)
+                        set: { edit.recipe.masks[index] = $0; renderForCurrentTool() })
+
+                    if edit.recipe.masks[index].kind == .brush {
+                        BrushOverlay(mask: binding,
+                                     imageAspect: aspect,
+                                     brushRadius: brushRadius,
+                                     isErasing: isErasing,
+                                     showsPaint: true)
+                    } else {
+                        MaskOverlay(mask: binding, imageAspect: aspect)
+                    }
                 }
             }
             .overlay {
@@ -330,6 +341,7 @@ struct LoupeView: View {
                             Menu {
                                 Button("Linear Gradient") { addMask(.linear) }
                                 Button("Radial Gradient") { addMask(.radial) }
+                                Button("Brush") { addMask(.brush) }
                             } label: {
                                 Image(systemName: "plus")
                             }
@@ -345,6 +357,11 @@ struct LoupeView: View {
                         } else {
                             ForEach(edit.recipe.masks) { mask in
                                 maskRow(mask)
+                            }
+
+                            if let index = selectedMaskIndex,
+                               edit.recipe.masks[index].kind == .brush {
+                                brushControls(index)
                             }
                         }
                     }
@@ -592,6 +609,7 @@ struct LoupeView: View {
             mask.start = EditPoint(x: 0.5, y: 0.5)
             mask.end = EditPoint(x: 0.78, y: 0.5)
         }
+        if kind == .brush { isErasing = false }
         edit.recipe.masks.append(mask)
         selectedMaskID = mask.id
         // Cropping and mask placement both want the pointer, so adding a mask
@@ -653,6 +671,55 @@ struct LoupeView: View {
                     in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture { selectedMaskID = isSelected ? nil : mask.id }
+    }
+
+    @ViewBuilder
+    private func brushControls(_ index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("", selection: $isErasing) {
+                Text("Paint").tag(false)
+                Text("Erase").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text("Size").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(brushRadius * 200))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: $brushRadius, in: 0.01...0.3).controlSize(.small)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text("Softness").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(edit.recipe.masks[index].softness * 100))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(
+                    get: { edit.recipe.masks[index].softness },
+                    set: { edit.recipe.masks[index].softness = $0; renderForCurrentTool() }
+                ), in: 0...1)
+                .controlSize(.small)
+            }
+
+            Button("Clear Strokes") {
+                edit.recipe.masks[index].strokes = []
+                renderForCurrentTool()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .disabled(edit.recipe.masks[index].strokes.isEmpty)
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 4)
     }
 
     private func setCropping(_ active: Bool) {

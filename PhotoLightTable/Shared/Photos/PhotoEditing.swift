@@ -245,11 +245,24 @@ struct EditPoint: Codable, Equatable {
     }
 }
 
+/// One painted stroke, stored as the path it followed rather than the pixels it
+/// produced — so it re-renders at whatever resolution is being drawn.
+struct BrushStroke: Codable, Equatable, Identifiable {
+    var id: UUID = UUID()
+    /// Normalized, top-left origin.
+    var points: [EditPoint] = []
+    /// Radius as a fraction of the image's shorter side, so a stroke covers the
+    /// same part of the photograph on a preview and on the original.
+    var radius: Double = 0.06
+    var isErase: Bool = false
+}
+
 /// A selective adjustment: where it applies, and what it does there.
 struct EditMask: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
         case linear
         case radial
+        case brush
     }
 
     var id: UUID = UUID()
@@ -264,9 +277,22 @@ struct EditMask: Codable, Equatable, Identifiable {
     var start = EditPoint(x: 0.5, y: 0.15)
     var end = EditPoint(x: 0.5, y: 0.55)
 
+    /// Brush only.
+    var strokes: [BrushStroke] = []
+    /// How far the painted edge feathers, as a fraction of the shorter side.
+    var softness: Double = 0.35
+
     var name: String {
-        kind == .linear ? "Linear Gradient" : "Radial Gradient"
+        switch kind {
+        case .linear: return "Linear Gradient"
+        case .radial: return "Radial Gradient"
+        case .brush: return "Brush"
+        }
     }
+
+    /// A brush with nothing painted has no effect, unlike a gradient which
+    /// always covers something.
+    var isEmpty: Bool { kind == .brush && strokes.allSatisfy { $0.points.isEmpty } }
 
     /// Geometry is stored against the *uncropped* image, so changing the crop
     /// reframes the photo without dragging the masks across its content.
@@ -278,6 +304,13 @@ struct EditMask: Codable, Equatable, Identifiable {
         let solid = CIColor(red: 1, green: 1, blue: 1, alpha: 1)
         let from = isInverted ? solid : clear
         let to = isInverted ? clear : solid
+
+        if kind == .brush {
+            return Self.brushMask(strokes: strokes,
+                                  softness: softness,
+                                  inverted: isInverted,
+                                  extent: extent)
+        }
 
         let generated: CIImage?
         switch kind {
@@ -296,11 +329,88 @@ struct EditMask: Codable, Equatable, Identifiable {
             filter.color0 = to
             filter.color1 = from
             generated = filter.outputImage
+        case .brush:
+            generated = nil
         }
 
         // Gradient generators are infinite; without cropping, the blend has no
         // definite extent and the render size becomes unbounded.
         return generated?.cropped(to: extent)
+    }
+
+    /// Rasterises the strokes into a grayscale mask.
+    ///
+    /// Core Graphics rather than a chain of Core Image gradients: a hundred
+    /// strokes would be a hundred composites, where one bitmap is one. The
+    /// raster is capped and scaled up to the target extent, which is invisible
+    /// because a painted mask is feathered anyway — the strokes themselves stay
+    /// resolution-independent, which is what actually matters.
+    private static func brushMask(strokes: [BrushStroke],
+                                  softness: Double,
+                                  inverted: Bool,
+                                  extent: CGRect) -> CIImage? {
+        let painted = strokes.filter { !$0.points.isEmpty }
+        guard !painted.isEmpty, extent.width > 0, extent.height > 0 else { return nil }
+
+        let cap: CGFloat = 2048
+        let scale = min(1, cap / max(extent.width, extent.height))
+        let width = max(1, Int(extent.width * scale))
+        let height = max(1, Int(extent.height * scale))
+        let reference = CGFloat(min(width, height))
+
+        guard let context = CGContext(data: nil,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+
+        context.setFillColor(gray: inverted ? 1 : 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+
+        for stroke in painted {
+            // Erasing paints the background value back, which is why inversion
+            // has to swap both ends rather than negate the result afterwards.
+            let paint: CGFloat = stroke.isErase ? (inverted ? 1 : 0) : (inverted ? 0 : 1)
+            context.setStrokeColor(gray: paint, alpha: 1)
+            context.setLineWidth(max(1, stroke.radius * 2 * reference))
+
+            // Normalized top-left to the context's bottom-left origin.
+            let points = stroke.points.map {
+                CGPoint(x: $0.x * CGFloat(width), y: (1 - $0.y) * CGFloat(height))
+            }
+            if points.count == 1 {
+                // A tap is a dot, which a zero-length path won't draw.
+                let radius = max(0.5, stroke.radius * reference)
+                context.setFillColor(gray: paint, alpha: 1)
+                context.fillEllipse(in: CGRect(x: points[0].x - radius,
+                                               y: points[0].y - radius,
+                                               width: radius * 2,
+                                               height: radius * 2))
+            } else {
+                context.addLines(between: points)
+                context.strokePath()
+            }
+        }
+
+        guard let raster = context.makeImage() else { return nil }
+        var image = CIImage(cgImage: raster)
+
+        if softness > 0 {
+            let blur = CIFilter.gaussianBlur()
+            blur.inputImage = image.clampedToExtent()
+            blur.radius = Float(softness * reference * 0.12)
+            image = blur.outputImage?.cropped(to: image.extent) ?? image
+        }
+
+        return image
+            .transformed(by: CGAffineTransform(scaleX: extent.width / CGFloat(width),
+                                               y: extent.height / CGFloat(height)))
+            .transformed(by: CGAffineTransform(translationX: extent.minX, y: extent.minY))
+            .cropped(to: extent)
     }
 }
 
@@ -351,7 +461,7 @@ struct PhotoEditRecipe: Codable, Equatable {
     func apply(to image: CIImage, applyCrop: Bool = true) -> CIImage {
         var result = tone.apply(to: image)
 
-        for mask in masks where mask.isEnabled && !mask.tone.isNeutral {
+        for mask in masks where mask.isEnabled && !mask.tone.isNeutral && !mask.isEmpty {
             guard let maskImage = mask.maskImage(for: result.extent) else { continue }
             let adjusted = mask.tone.apply(to: result)
 
