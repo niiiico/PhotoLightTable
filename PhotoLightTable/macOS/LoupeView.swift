@@ -29,6 +29,8 @@ struct LoupeView: View {
     @State private var isCropping = false
     @State private var cropAspect: CropAspect = .free
     @State private var selectedMaskID: UUID?
+    @State private var comparison: ComparisonMode = .off
+    @State private var splitPosition: Double = 0.5
     @State private var brushRadius: Double = 0.06
     @State private var isErasing = false
     @Environment(\.modelContext) private var modelContext
@@ -73,6 +75,8 @@ struct LoupeView: View {
             // through without leaving and re-entering the panel each time.
             if isEditing, let current {
                 selectedMaskID = nil
+                comparison = .off
+                edit.wantsBeforePreview = false
                 await edit.begin(for: current)
                 renderForCurrentTool()
             }
@@ -88,7 +92,13 @@ struct LoupeView: View {
     private var photoArea: some View {
         GeometryReader { geo in
             ZStack {
-                if let image = isEditing ? (edit.preview ?? image) : image {
+                if comparison.isActive,
+                   let before = edit.beforePreview,
+                   let after = edit.preview {
+                    ComparisonView(before: before, after: after,
+                                   mode: comparison,
+                                   splitPosition: $splitPosition)
+                } else if let image = isEditing ? (edit.preview ?? image) : image {
                     Image(platformImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -187,6 +197,29 @@ struct LoupeView: View {
             }
 
             Spacer()
+
+            if isEditing {
+                Menu {
+                    ForEach(ComparisonMode.allCases) { mode in
+                        Button {
+                            setComparison(mode)
+                        } label: {
+                            Label(mode.label, systemImage: mode.symbolName)
+                        }
+                    }
+                } label: {
+                    Label("Compare", systemImage: comparison.symbolName)
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(comparison.isActive ? Color.accentColor : .secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .disabled(!edit.hasVisibleChange)
+                .help(edit.hasVisibleChange
+                      ? "Compare with how it was (\\)"
+                      : "Nothing has changed to compare yet")
+            }
 
             if zoomState.isZoomed {
                 Text("\(Int(zoomState.zoom * 100))%")
@@ -743,7 +776,11 @@ struct LoupeView: View {
     private func setCropping(_ active: Bool) {
         isCropping = active
         // The two overlays would compete for the same drags.
-        if active { zoomState.reset(); selectedMaskID = nil }
+        if active {
+            zoomState.reset()
+            selectedMaskID = nil
+            if comparison.isActive { comparison = .off; edit.wantsBeforePreview = false }
+        }
         renderForCurrentTool()
     }
 
@@ -756,12 +793,26 @@ struct LoupeView: View {
         if id != nil {
             zoomState.reset()
             if isCropping { isCropping = false }
+            if comparison.isActive { comparison = .off; edit.wantsBeforePreview = false }
         }
         renderForCurrentTool()
     }
 
     private var handlesAreActive: Bool {
         isCropping || selectedMaskID != nil
+    }
+
+    /// Comparison, crop handles and mask handles each want the whole frame, so
+    /// turning one on puts the others away.
+    private func setComparison(_ mode: ComparisonMode) {
+        comparison = mode
+        edit.wantsBeforePreview = mode.isActive
+        if mode.isActive {
+            zoomState.reset()
+            isCropping = false
+            selectedMaskID = nil
+        }
+        renderForCurrentTool()
     }
 
     /// The preview drops the crop whenever handles are being placed against the
@@ -784,6 +835,8 @@ struct LoupeView: View {
             isEditing = false
             isCropping = false
             selectedMaskID = nil
+            comparison = .off
+            edit.wantsBeforePreview = false
             editError = nil
             edit.cancel()
             return
@@ -796,6 +849,8 @@ struct LoupeView: View {
                 isEditing = false
                 isCropping = false
                 selectedMaskID = nil
+                comparison = .off
+                edit.wantsBeforePreview = false
                 editError = nil
                 edit.cancel()
             } catch {
@@ -897,6 +952,11 @@ struct LoupeView: View {
 
         guard let character = press.characters.lowercased().first,
               let focusID = app.focusID else { return .ignored }
+
+        if character == "\\", isEditing, edit.hasVisibleChange {
+            setComparison(comparison == .split ? .off : .split)
+            return .handled
+        }
 
         if character == "c", isEditing {
             setCropping(!isCropping)

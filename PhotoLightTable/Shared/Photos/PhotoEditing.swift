@@ -550,6 +550,13 @@ final class PhotoEditSession: ObservableObject {
 
     @Published var recipe = PhotoEditRecipe()
     @Published private(set) var preview: PlatformImage?
+    /// The photo as it stood when this session opened, for comparison.
+    @Published private(set) var beforePreview: PlatformImage?
+    /// Rendering the "before" costs a second pass over the image, so it is only
+    /// produced while something is actually showing it.
+    var wantsBeforePreview = false {
+        didSet { if wantsBeforePreview != oldValue { renderPreview(applyCrop: pendingApplyCrop) } }
+    }
     @Published private(set) var isLoading = false
     @Published private(set) var isCommitting = false
     @Published private(set) var canEdit = false
@@ -627,6 +634,7 @@ final class PhotoEditSession: ObservableObject {
         inputAssetID = nil
         previewBase = nil
         preview = nil
+        beforePreview = nil
         recipe = .neutral
         loadedRecipe = .neutral
         hasExistingEdit = false
@@ -661,9 +669,34 @@ final class PhotoEditSession: ObservableObject {
     private func renderPreviewNow(applyCrop: Bool) {
         guard let previewBase else { return }
         let edited = recipe.apply(to: previewBase, applyCrop: applyCrop)
-        guard let cgImage = context.createCGImage(edited, from: edited.extent) else { return }
-        preview = PlatformImage.from(cgImage)
+        if let cgImage = context.createCGImage(edited, from: edited.extent) {
+            preview = PlatformImage.from(cgImage)
+        }
+
+        guard wantsBeforePreview else {
+            beforePreview = nil
+            return
+        }
+        let before = beforeRecipe.apply(to: previewBase, applyCrop: applyCrop)
+        if let cgImage = context.createCGImage(before, from: before.extent) {
+            beforePreview = PlatformImage.from(cgImage)
+        }
     }
+
+    /// The tone and masks as they were when the session opened, framed as the
+    /// photo is framed now.
+    ///
+    /// Keeping the current crop is what makes a split comparison legible: two
+    /// images of different shapes can't be compared across a divider, and the
+    /// question being asked is what the adjustments did, not what the crop did.
+    private var beforeRecipe: PhotoEditRecipe {
+        var recipe = loadedRecipe
+        recipe.crop = self.recipe.crop
+        return recipe
+    }
+
+    /// Whether anything actually differs from how the session opened.
+    var hasVisibleChange: Bool { recipe != loadedRecipe }
 
     // MARK: - Committing
 

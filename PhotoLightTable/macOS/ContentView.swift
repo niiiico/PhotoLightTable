@@ -343,6 +343,7 @@ struct ShortcutsHelp: View {
         ("R", "Select related photos (again to widen)"),
         ("E", "Loupe: adjust the photo"),
         ("C", "Loupe: crop (while adjusting)"),
+        ("\\", "Loupe: compare before and after"),
         ("Z", "Loupe: zoom to 250% / fit"),
         ("+ −", "Loupe: zoom in / out"),
         ("← → ↑ ↓", "Move between photos"),
