@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 enum ComparisonMode: String, CaseIterable, Identifiable {
@@ -103,7 +102,7 @@ struct ComparisonView: View {
     private func handle(at x: CGFloat, y: CGFloat) -> some View {
         Circle()
             .fill(.white)
-            .frame(width: 22, height: 22)
+            .frame(width: Platform.hasPointer ? 22 : 32, height: Platform.hasPointer ? 22 : 32)
             .overlay {
                 Image(systemName: "arrow.left.and.right")
                     .font(.system(size: 10, weight: .bold))
@@ -111,7 +110,7 @@ struct ComparisonView: View {
             }
             .shadow(radius: 3)
             .position(x: x, y: y)
-            .contentShape(Circle().inset(by: -14))
+            .contentShape(Circle().inset(by: -Platform.minimumHitTarget / 2))
     }
 
     private func dragGesture(in frame: CGRect) -> some Gesture {
@@ -141,4 +140,3 @@ struct ComparisonView: View {
         after.size.height > 0 ? after.size.width / after.size.height : 1
     }
 }
-#endif

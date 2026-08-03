@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 /// Painting surface for a brush mask.
@@ -35,6 +34,9 @@ struct BrushOverlay: View {
                     .contentShape(Rectangle())
                     .gesture(paintGesture(in: frame))
                     .onContinuousHover { phase in
+                        // Never fires on touch, where the ring is shown during
+                        // the stroke instead — there is nothing to preview
+                        // before the finger lands.
                         switch phase {
                         case .active(let location): pointer = location
                         case .ended: pointer = nil
@@ -141,6 +143,7 @@ struct BrushOverlay: View {
             .onEnded { _ in
                 strokeID = nil
                 isPainting = false
+                if !Platform.hasPointer { pointer = nil }
             }
     }
 
@@ -158,4 +161,3 @@ struct BrushOverlay: View {
         max(4, lineWidth(brushRadius, in: frame))
     }
 }
-#endif

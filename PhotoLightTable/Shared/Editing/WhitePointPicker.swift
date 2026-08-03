@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 /// Catches a click on the photo and reports where it landed, normalized.
@@ -71,4 +70,3 @@ struct WhitePointPicker: View {
         }
     }
 }
-#endif

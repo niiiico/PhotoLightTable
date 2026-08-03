@@ -44,6 +44,26 @@ extension CIImage {
 }
 
 enum Platform {
+    /// Smallest comfortable hit target. A pointer lands where it is aimed; a
+    /// fingertip covers about 44 points and cannot see what is under it.
+    static var minimumHitTarget: CGFloat {
+        #if os(macOS)
+        24
+        #else
+        44
+        #endif
+    }
+
+    /// Whether a pointer is the primary input. Hover states and 12-point
+    /// handles only make sense when it is.
+    static var hasPointer: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     /// Backing scale, used to ask PhotoKit for thumbnails at native resolution
     /// rather than upscaling a point-sized image.
     static var screenScale: CGFloat {

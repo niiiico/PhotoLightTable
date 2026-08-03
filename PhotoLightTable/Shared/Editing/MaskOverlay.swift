@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 /// Handles for placing a gradient over the photo.
@@ -13,6 +12,8 @@ struct MaskOverlay: View {
     /// permanently would tint every judgement made about the photo underneath.
     @State private var showsCoverage = false
     @State private var fadeTask: Task<Void, Never>?
+
+    private var knob: CGFloat { Platform.hasPointer ? 13 : 20 }
 
     var body: some View {
         GeometryReader { geo in
@@ -135,9 +136,9 @@ struct MaskOverlay: View {
         Circle()
             .fill(filled ? .white : .white.opacity(0.25))
             .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
-            .frame(width: 13, height: 13)
-            .contentShape(Circle().inset(by: -12))
-            .offset(x: point.x - 6.5, y: point.y - 6.5)
+            .frame(width: knob, height: knob)
+            .contentShape(Circle().inset(by: -Platform.minimumHitTarget / 2))
+            .offset(x: point.x - knob / 2, y: point.y - knob / 2)
     }
 
     private func drag(for keyPath: WritableKeyPath<EditMask, EditPoint>,
@@ -157,4 +158,3 @@ struct MaskOverlay: View {
                 y: frame.minY + point.y * frame.height)
     }
 }
-#endif

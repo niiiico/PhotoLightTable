@@ -1,6 +1,8 @@
+import SwiftUI
+
 #if os(macOS)
 import AppKit
-import SwiftUI
+#endif
 
 /// Zoom and pan state for the loupe.
 ///
@@ -14,7 +16,9 @@ final class LoupeZoom: ObservableObject {
 
     private var committedZoom: CGFloat = 1
     private var committedPan: CGSize = .zero
+    #if os(macOS)
     private var monitor: Any?
+    #endif
 
     static let maxZoom: CGFloat = 8
     static let doubleClickZoom: CGFloat = 2.5
@@ -23,6 +27,10 @@ final class LoupeZoom: ObservableObject {
 
     // MARK: - Scroll wheel
 
+    /// Trackpad and mouse only. On touch, panning is a drag and magnifying is a
+    /// pinch, both of which reach the view directly — there is nothing for a
+    /// monitor to catch.
+    #if os(macOS)
     /// A local monitor rather than a view: scroll events are delivered by hit
     /// testing, and the image and its gesture recognizers sit in front of any
     /// view we could put behind them.
@@ -41,6 +49,10 @@ final class LoupeZoom: ObservableObject {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
     }
+    #else
+    func startMonitoringScroll() {}
+    func stopMonitoringScroll() {}
+    #endif
 
     // MARK: - Mutation
 
@@ -82,4 +94,3 @@ final class LoupeZoom: ObservableObject {
 
     func reset() { set(1) }
 }
-#endif

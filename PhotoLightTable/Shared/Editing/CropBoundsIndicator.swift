@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 /// Dims what the crop will discard.
@@ -40,4 +39,3 @@ struct CropBoundsIndicator: View {
             .offset(x: x, y: y)
     }
 }
-#endif

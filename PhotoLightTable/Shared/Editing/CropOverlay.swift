@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 /// Aspect ratios offered while cropping. `nil` leaves the rect free.
@@ -42,7 +41,8 @@ struct CropOverlay: View {
 
     @State private var dragStart: CropRect?
 
-    private let handle: CGFloat = 22
+    private var handle: CGFloat { max(22, Platform.minimumHitTarget) }
+    private var knob: CGFloat { Platform.hasPointer ? 12 : 18 }
     private let border: CGFloat = 1.5
 
     var body: some View {
@@ -115,10 +115,12 @@ struct CropOverlay: View {
         let point = corner.point(in: rect)
         return Rectangle()
             .fill(.white)
-            .frame(width: 12, height: 12)
+            .frame(width: knob, height: knob)
             .overlay(Rectangle().strokeBorder(.black.opacity(0.35), lineWidth: 0.5))
+            // The touchable area is larger than the drawn one, so a fingertip
+            // has something to catch that a 12-point square would not give it.
             .contentShape(Rectangle().inset(by: -handle / 2))
-            .offset(x: point.x - 6, y: point.y - 6)
+            .offset(x: point.x - knob / 2, y: point.y - knob / 2)
             .gesture(resizeGesture(corner, in: frame))
     }
 
@@ -250,4 +252,3 @@ struct CropOverlay: View {
         }
     }
 }
-#endif
