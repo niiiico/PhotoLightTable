@@ -602,14 +602,12 @@ struct LoupeView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                setTone(adjustment, 0)
-                renderForCurrentTool()
-            }
+            // The label is only a label. Resetting lives on the control, where
+            // the pointer already is, and a double-click on a caption is easy to
+            // trigger while trying to read the value.
             .help(adjustment.isSpatial
-                  ? "\(adjustment.label) — negative sharpens, positive blurs. Double-click the slider to reset"
-                  : "\(adjustment.label) — double-click the slider to reset")
+                  ? "\(adjustment.label) — negative sharpens, positive blurs"
+                  : adjustment.label)
 
             Slider(value: Binding(
                 get: { activeTone[adjustment] },
@@ -622,6 +620,7 @@ struct LoupeView: View {
                 setTone(adjustment, 0)
                 renderForCurrentTool()
             })
+            .help("Double-click to reset")
         }
     }
 
