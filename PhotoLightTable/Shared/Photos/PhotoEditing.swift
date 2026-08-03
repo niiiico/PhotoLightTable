@@ -122,7 +122,37 @@ enum Adjustment: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-/// The eight tonal values, shared by the whole-image stack and by each mask.
+/// A colour in the photo that should read as neutral.
+///
+/// Stored as the sampled colour rather than as a temperature, because the
+/// mapping back from a pixel to a colour temperature isn't invertible — two
+/// different illuminants can produce the same pixel. `CIWhitePointAdjust` takes
+/// the colour directly, so nothing has to be inferred.
+struct WhitePoint: Codable, Equatable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    /// Scaled so the correction changes colour without changing brightness.
+    ///
+    /// `CIWhitePointAdjust` maps the given colour to white, which on a dark
+    /// sample would also lift the whole image. Dividing through by luminance
+    /// leaves only the ratio between channels, which is the part that describes
+    /// the illuminant.
+    var luminanceNormalized: WhitePoint? {
+        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        guard luminance > 0.02 else { return nil }
+        return WhitePoint(red: red / luminance,
+                          green: green / luminance,
+                          blue: blue / luminance)
+    }
+
+    var ciColor: CIColor {
+        CIColor(red: red, green: green, blue: blue)
+    }
+}
+
+/// The tonal values, shared by the whole-image stack and by each mask.
 ///
 /// Factored out so a mask is "the same adjustments, somewhere in particular"
 /// rather than a parallel set that could drift apart from the global one.
@@ -139,6 +169,8 @@ struct ToneAdjustments: Codable, Equatable {
     var definition: Double = 0
     var noiseReduction: Double = 0
     var blur: Double = 0
+    /// Set by sampling a neutral in the photo; nil means no reference taken.
+    var whitePoint: WhitePoint?
 
     static let neutral = ToneAdjustments()
     var isNeutral: Bool { self == .neutral }
@@ -179,9 +211,10 @@ struct ToneAdjustments: Codable, Equatable {
     }
 
     var summary: String {
-        let parts = Adjustment.allCases
+        var parts = Adjustment.allCases
             .filter { self[$0] != 0 }
             .map { "\($0.label) \($0.formatted(self[$0]))" }
+        if whitePoint != nil { parts.append("White balanced") }
         return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
     }
 
@@ -204,6 +237,7 @@ struct ToneAdjustments: Codable, Equatable {
         definition = try container.decodeIfPresent(Double.self, forKey: .definition) ?? 0
         noiseReduction = try container.decodeIfPresent(Double.self, forKey: .noiseReduction) ?? 0
         blur = try container.decodeIfPresent(Double.self, forKey: .blur) ?? 0
+        whitePoint = try? container.decodeIfPresent(WhitePoint.self, forKey: .whitePoint)
     }
 
     /// The order follows how the adjustments are meant to be read: overall
@@ -254,6 +288,16 @@ struct ToneAdjustments: Codable, Equatable {
             filter.point2 = CGPoint(x: 0.5, y: 0.5)
             filter.point3 = CGPoint(x: 0.75, y: 0.75)
             filter.point4 = CGPoint(x: 1, y: 1)
+            result = filter.outputImage ?? result
+        }
+
+        // Before warmth and tint, so the sampled neutral sets the reference and
+        // those two remain an adjustment relative to it rather than a competing
+        // opinion about the same thing.
+        if let normalized = whitePoint?.luminanceNormalized {
+            let filter = CIFilter.whitePointAdjust()
+            filter.inputImage = result
+            filter.color = normalized.ciColor
             result = filter.outputImage ?? result
         }
 
@@ -564,6 +608,13 @@ struct PhotoEditRecipe: Codable, Equatable {
 
     var hasNeutralTone: Bool { tone.isNeutral }
 
+    /// True when the whole-image tone carries nothing at all, white point
+    /// included — `Adjustment.allCases` doesn't cover it, since it isn't a
+    /// slider.
+    var hasNeutralToneIncludingWhitePoint: Bool {
+        tone.isNeutral && tone.whitePoint == nil
+    }
+
     subscript(adjustment: Adjustment) -> Double {
         get { tone[adjustment] }
         set { tone[adjustment] = newValue }
@@ -837,6 +888,62 @@ final class PhotoEditSession: ObservableObject {
 
     /// Whether anything actually differs from how the session opened.
     var hasVisibleChange: Bool { recipe != loadedRecipe }
+
+    // MARK: - White balance
+
+    /// Reads the colour at a point and stores it as the neutral reference.
+    ///
+    /// Averaged over a small patch rather than taken from one pixel: a single
+    /// pixel carries sensor noise, and a white balance set from noise is a
+    /// white balance set from nothing. Sampled from the unedited image, so the
+    /// reference describes the light in the photograph and not the adjustments
+    /// already made to it.
+    @discardableResult
+    func sampleWhitePoint(at point: EditPoint, into target: MaskTarget = .whole) -> Bool {
+        guard let previewBase else { return false }
+        let extent = previewBase.extent
+        guard extent.width > 0, extent.height > 0 else { return false }
+
+        let patch = max(2, min(extent.width, extent.height) * 0.02)
+        let centre = point.inPixels(of: extent)
+        let region = CGRect(x: centre.x - patch / 2, y: centre.y - patch / 2,
+                            width: patch, height: patch).intersection(extent)
+        guard !region.isNull, region.width >= 1, region.height >= 1 else { return false }
+
+        let average = CIFilter.areaAverage()
+        average.inputImage = previewBase
+        average.extent = region
+        guard let output = average.outputImage else { return false }
+
+        var pixel = [UInt8](repeating: 0, count: 4)
+        context.render(output,
+                       toBitmap: &pixel,
+                       rowBytes: 4,
+                       bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                       format: .RGBA8,
+                       colorSpace: CGColorSpaceCreateDeviceRGB())
+
+        let sampled = WhitePoint(red: Double(pixel[0]) / 255,
+                                 green: Double(pixel[1]) / 255,
+                                 blue: Double(pixel[2]) / 255)
+        // Too dark to carry a usable ratio between channels.
+        guard sampled.luminanceNormalized != nil else { return false }
+
+        switch target {
+        case .whole:
+            recipe.tone.whitePoint = sampled
+        case .mask(let id):
+            guard let index = recipe.masks.firstIndex(where: { $0.id == id }) else { return false }
+            recipe.masks[index].tone.whitePoint = sampled
+        }
+        renderPreview(applyCrop: pendingApplyCrop)
+        return true
+    }
+
+    enum MaskTarget {
+        case whole
+        case mask(UUID)
+    }
 
     // MARK: - Committing
 

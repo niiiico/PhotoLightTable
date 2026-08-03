@@ -29,6 +29,7 @@ struct LoupeView: View {
     @State private var isCropping = false
     @State private var cropAspect: CropAspect = .free
     @State private var selectedMaskID: UUID?
+    @State private var isPickingWhitePoint = false
     @State private var comparison: ComparisonMode = .off
     @State private var splitPosition: Double = 0.5
     @State private var brushRadius: Double = BrushStroke.defaultRadius
@@ -76,6 +77,7 @@ struct LoupeView: View {
             if isEditing, let current {
                 selectedMaskID = nil
                 comparison = .off
+                isPickingWhitePoint = false
                 edit.wantsBeforePreview = false
                 await edit.begin(for: current)
                 renderForCurrentTool()
@@ -111,6 +113,22 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
+            .overlay {
+                if isPickingWhitePoint, let displayed = edit.preview ?? image {
+                    WhitePointPicker(
+                        imageAspect: displayed.size.height > 0
+                            ? displayed.size.width / displayed.size.height : 1,
+                        onPick: { point in
+                            let target: PhotoEditSession.MaskTarget =
+                                selectedMaskID.map { .mask($0) } ?? .whole
+                            if !edit.sampleWhitePoint(at: point, into: target) {
+                                editError = "That area is too dark to balance from — try a lighter neutral."
+                            }
+                            isPickingWhitePoint = false
+                        },
+                        onCancel: { isPickingWhitePoint = false })
+                }
+            }
             .overlay {
                 if !isCropping, selectedMaskID != nil, !edit.recipe.crop.isFull,
                    let displayed = edit.preview ?? image {
@@ -366,10 +384,12 @@ struct LoupeView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 10) {
                         sectionHeading(selectedMask == nil ? "Adjust" : "Adjust Mask",
-                                       isReset: activeTone.isNeutral) {
+                                       isReset: activeTone.isNeutral && activeTone.whitePoint == nil) {
                             for adjustment in Adjustment.allCases { setTone(adjustment, 0) }
+                            setWhitePoint(nil)
                             renderForCurrentTool()
                         }
+                        whiteBalanceRow
                         ForEach(Adjustment.allCases) { adjustmentSlider($0) }
                     }
 
@@ -798,6 +818,52 @@ struct LoupeView: View {
         .padding(.bottom, 4)
     }
 
+    private var whiteBalanceRow: some View {
+        HStack(spacing: 6) {
+            Button {
+                isPickingWhitePoint.toggle()
+                if isPickingWhitePoint {
+                    // The picker needs the click the other overlays would take.
+                    zoomState.reset()
+                    isCropping = false
+                    if comparison.isActive { comparison = .off; edit.wantsBeforePreview = false }
+                    renderForCurrentTool()
+                }
+            } label: {
+                Label("White Balance", systemImage: "eyedropper")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isPickingWhitePoint ? Color.accentColor
+                             : (activeTone.whitePoint == nil ? .secondary : .primary))
+            .help("Click a neutral grey or white in the photo")
+
+            Spacer()
+
+            if activeTone.whitePoint != nil {
+                Button {
+                    setWhitePoint(nil)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Clear the sampled white balance")
+            }
+        }
+        .padding(.bottom, 2)
+    }
+
+    private func setWhitePoint(_ value: WhitePoint?) {
+        if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
+            updateMask(id) { $0.tone.whitePoint = value }
+        } else {
+            edit.recipe.tone.whitePoint = value
+            renderForCurrentTool()
+        }
+    }
+
     private func setCropping(_ active: Bool) {
         isCropping = active
         // The two overlays would compete for the same drags.
@@ -824,7 +890,7 @@ struct LoupeView: View {
     }
 
     private var handlesAreActive: Bool {
-        isCropping || selectedMaskID != nil
+        isCropping || selectedMaskID != nil || isPickingWhitePoint
     }
 
     /// Comparison, crop handles and mask handles each want the whole frame, so
@@ -860,6 +926,7 @@ struct LoupeView: View {
             isEditing = false
             isCropping = false
             selectedMaskID = nil
+            isPickingWhitePoint = false
             comparison = .off
             edit.wantsBeforePreview = false
             editError = nil
@@ -874,6 +941,7 @@ struct LoupeView: View {
                 isEditing = false
                 isCropping = false
                 selectedMaskID = nil
+                isPickingWhitePoint = false
                 comparison = .off
                 edit.wantsBeforePreview = false
                 editError = nil
@@ -963,7 +1031,8 @@ struct LoupeView: View {
         case .rightArrow:
             navigate(by: 1); return .handled
         case .escape:
-            if isCropping { setCropping(false) }
+            if isPickingWhitePoint { isPickingWhitePoint = false }
+            else if isCropping { setCropping(false) }
             else if isEditing { endEditing(commit: false) }
             else { close() }
             return .handled
