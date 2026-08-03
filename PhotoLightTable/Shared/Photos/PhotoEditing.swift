@@ -847,15 +847,26 @@ final class PhotoEditSession: ObservableObject {
             // rendering, which is not what Photos shows and not what the
             // adjustments were judged against. CIRAWFilter returns nil for
             // anything that isn't RAW, so this is also the format test.
-            let base: CIImage
-            if let raw = CIRAWFilter(imageURL: sourceURL), let decoded = raw.outputImage {
-                base = decoded
+            let oriented: CIImage
+            if let raw = CIRAWFilter(imageURL: sourceURL) {
+                // CIRAWFilter orients the image itself, from its own
+                // `orientation` property. Applying the EXIF orientation on top
+                // of that rotates the photo twice — which writes a render that
+                // is correct in the editor, because the editor works from
+                // PhotoKit's original, and wrong everywhere the rendered file is
+                // shown.
+                raw.orientation = CGImagePropertyOrientation(rawValue: UInt32(orientation)) ?? .up
+                guard let decoded = raw.outputImage else { throw PhotoEditError.couldNotRender }
+                oriented = decoded
+                editLog("write: RAW pipeline, orientation applied by decoder")
             } else if let decoded = CIImage(contentsOf: sourceURL) {
-                base = decoded
+                // ImageIO hands back unrotated pixels with the orientation left
+                // in the metadata, so it has to be applied here.
+                oriented = decoded.oriented(forExifOrientation: orientation)
+                editLog("write: ImageIO pipeline, orientation applied here")
             } else {
                 throw PhotoEditError.couldNotRender
             }
-            let oriented = base.oriented(forExifOrientation: orientation)
 
             // Orienting bakes the rotation into the pixels, but the metadata
             // carried over from the source still declares the original
