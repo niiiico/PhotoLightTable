@@ -55,6 +55,9 @@ struct ContentView: View {
                 }
             }
             .frame(minWidth: 640, minHeight: 480)
+            // Bottom left, under the grid's own content — deliberately quiet,
+            // and not in the way of anything.
+            .overlay(alignment: .bottomLeading) { BuildStamp() }
             .toolbar { toolbarContent }
             .navigationTitle(title)
             .navigationSubtitle(subtitle)
