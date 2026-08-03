@@ -31,7 +31,7 @@ struct LoupeView: View {
     @State private var selectedMaskID: UUID?
     @State private var comparison: ComparisonMode = .off
     @State private var splitPosition: Double = 0.5
-    @State private var brushRadius: Double = 0.06
+    @State private var brushRadius: Double = BrushStroke.defaultRadius
     @State private var isErasing = false
     @Environment(\.modelContext) private var modelContext
 
@@ -607,14 +607,20 @@ struct LoupeView: View {
                 renderForCurrentTool()
             }
             .help(adjustment.isSpatial
-                  ? "\(adjustment.label) — negative sharpens, positive blurs. Double-click to reset"
-                  : "\(adjustment.label) — double-click to reset")
+                  ? "\(adjustment.label) — negative sharpens, positive blurs. Double-click the slider to reset"
+                  : "\(adjustment.label) — double-click the slider to reset")
 
             Slider(value: Binding(
                 get: { activeTone[adjustment] },
                 set: { setTone(adjustment, $0); renderForCurrentTool() }
             ), in: adjustment.range)
             .controlSize(.small)
+            // Simultaneous, so the slider keeps its own drag and click-to-jump;
+            // a plain tap gesture here would swallow both.
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                setTone(adjustment, 0)
+                renderForCurrentTool()
+            })
         }
     }
 
@@ -743,7 +749,11 @@ struct LoupeView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Slider(value: $brushRadius, in: 0.01...0.3).controlSize(.small)
+                Slider(value: $brushRadius, in: 0.01...0.3)
+                    .controlSize(.small)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                        brushRadius = BrushStroke.defaultRadius
+                    })
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -759,6 +769,9 @@ struct LoupeView: View {
                     set: { value in updateMask(id) { $0.softness = value } }
                 ), in: 0...1)
                 .controlSize(.small)
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    updateMask(id) { $0.softness = EditMask.defaultSoftness }
+                })
             }
 
             Button("Clear Strokes") {

@@ -285,8 +285,10 @@ struct BrushStroke: Codable, Equatable, Identifiable {
     var points: [EditPoint] = []
     /// Radius as a fraction of the image's shorter side, so a stroke covers the
     /// same part of the photograph on a preview and on the original.
-    var radius: Double = 0.06
+    var radius: Double = defaultRadius
     var isErase: Bool = false
+
+    static let defaultRadius = 0.06
 
     init() {}
 
@@ -294,7 +296,7 @@ struct BrushStroke: Codable, Equatable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         points = try container.decodeIfPresent([EditPoint].self, forKey: .points) ?? []
-        radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0.06
+        radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? Self.defaultRadius
         isErase = try container.decodeIfPresent(Bool.self, forKey: .isErase) ?? false
     }
 }
@@ -332,7 +334,7 @@ struct EditMask: Codable, Equatable, Identifiable {
         start = try container.decodeIfPresent(EditPoint.self, forKey: .start) ?? EditPoint(x: 0.5, y: 0.15)
         end = try container.decodeIfPresent(EditPoint.self, forKey: .end) ?? EditPoint(x: 0.5, y: 0.55)
         strokes = try container.decodeIfPresent([BrushStroke].self, forKey: .strokes) ?? []
-        softness = try container.decodeIfPresent(Double.self, forKey: .softness) ?? 0.35
+        softness = try container.decodeIfPresent(Double.self, forKey: .softness) ?? Self.defaultSoftness
     }
 
     /// For a linear gradient, the ramp runs from `start` (no effect) to `end`
@@ -344,7 +346,9 @@ struct EditMask: Codable, Equatable, Identifiable {
     /// Brush only.
     var strokes: [BrushStroke] = []
     /// How far the painted edge feathers, as a fraction of the shorter side.
-    var softness: Double = 0.35
+    var softness: Double = defaultSoftness
+
+    static let defaultSoftness = 0.35
 
     var name: String {
         switch kind {
