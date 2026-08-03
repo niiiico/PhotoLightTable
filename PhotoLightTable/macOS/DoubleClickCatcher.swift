@@ -8,9 +8,9 @@ import SwiftUI
 /// consumes mouse events for its own tracking before any recogniser sees them —
 /// even a `.simultaneousGesture`. A local event monitor sees them regardless of
 /// the responder chain, and this view exists only to supply a frame to test the
-/// click against. It never intercepts anything itself: `hitTest` returns nil, so
-/// dragging and click-to-jump keep working, and the event is passed on rather
-/// than consumed.
+/// click against. `hitTest` returns nil so it is never a hit target and single
+/// clicks, drags and click-to-jump are untouched; only the second click of a
+/// double-click is taken, and only when it lands inside these bounds.
 struct DoubleClickCatcher: NSViewRepresentable {
     var action: () -> Void
 
@@ -49,10 +49,14 @@ struct DoubleClickCatcher: NSViewRepresentable {
                       event.window === window else { return event }
 
                 let point = self.convert(event.locationInWindow, from: nil)
-                if self.bounds.contains(point) { self.action?() }
-                // Passed on, not consumed: the second click of the pair still
-                // reaches the slider, and the reset lands after it.
-                return event
+                guard self.bounds.contains(point) else { return event }
+
+                self.action?()
+                // Swallowed. Passing it on lets the slider handle the same click
+                // and jump its value to the click position, which lands after the
+                // reset and undoes it — the reset ran, and then the control put
+                // the value straight back.
+                return nil
             }
         }
 

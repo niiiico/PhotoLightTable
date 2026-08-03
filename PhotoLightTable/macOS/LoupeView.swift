@@ -593,7 +593,7 @@ struct LoupeView: View {
     /// quicker than dragging a slider back to exactly zero.
     private func adjustmentSlider(_ adjustment: Adjustment) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack {
+            HStack(spacing: 4) {
                 Text(adjustment.label)
                     .font(.caption)
                     .foregroundStyle(activeTone[adjustment] == 0 ? .secondary : .primary)
@@ -601,6 +601,21 @@ struct LoupeView: View {
                 Text(adjustment.formatted(activeTone[adjustment]))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+
+                // Shown only when there is something to undo, so a row at
+                // neutral stays quiet.
+                Button {
+                    setTone(adjustment, 0)
+                    renderForCurrentTool()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .opacity(activeTone[adjustment] == 0 ? 0 : 1)
+                .disabled(activeTone[adjustment] == 0)
+                .help("Reset \(adjustment.label)")
             }
             // The label is only a label. Resetting lives on the control, where
             // the pointer already is, and a double-click on a caption is easy to
