@@ -63,8 +63,9 @@ struct CropRect: Codable, Equatable {
 /// stops. The mapping into each filter's own units happens in `apply`, so the
 /// stored recipe stays in terms a person would recognise.
 enum Adjustment: String, CaseIterable, Identifiable, Codable {
-    case exposure, contrast, saturation, vibrance
+    case exposure, contrast, blackPoint, saturation, vibrance
     case highlights, shadows, warmth, tint
+    case definition, noiseReduction
     /// Negative sharpens, positive blurs. Spatial rather than tonal, but it
     /// belongs in the same set so a mask gets it for nothing.
     case blur
@@ -81,21 +82,43 @@ enum Adjustment: String, CaseIterable, Identifiable, Codable {
         case .shadows: return "Shadows"
         case .warmth: return "Warmth"
         case .tint: return "Tint"
+        case .blackPoint: return "Black Point"
+        case .definition: return "Definition"
+        case .noiseReduction: return "Noise Reduction"
         case .blur: return "Blur"
         }
     }
 
     var range: ClosedRange<Double> {
-        self == .exposure ? -3...3 : -1...1
+        switch self {
+        case .exposure: return -3...3
+        // Nothing below zero would mean anything: there is no negative amount
+        // of noise to remove.
+        case .noiseReduction: return 0...1
+        default: return -1...1
+        }
     }
+
+    var isUnipolar: Bool { self == .noiseReduction }
 
     /// Blur reads as "sharp ← → blurred" rather than as a signed amount.
     var isSpatial: Bool { self == .blur }
 
     func formatted(_ value: Double) -> String {
-        self == .exposure
-            ? String(format: "%+.2f EV", value)
-            : String(format: "%+.0f", value * 100)
+        if self == .exposure { return String(format: "%+.2f EV", value) }
+        if isUnipolar { return String(format: "%.0f", value * 100) }
+        return String(format: "%+.0f", value * 100)
+    }
+
+    /// What this adjustment does, where the name alone doesn't say.
+    var explanation: String? {
+        switch self {
+        case .blur: return "Negative sharpens, positive blurs"
+        case .definition: return "Local contrast — separate from sharpening"
+        case .blackPoint: return "Where the darkest tone sits"
+        case .noiseReduction: return "Strongest settings soften fine detail"
+        default: return nil
+        }
     }
 }
 
@@ -112,6 +135,9 @@ struct ToneAdjustments: Codable, Equatable {
     var shadows: Double = 0
     var warmth: Double = 0
     var tint: Double = 0
+    var blackPoint: Double = 0
+    var definition: Double = 0
+    var noiseReduction: Double = 0
     var blur: Double = 0
 
     static let neutral = ToneAdjustments()
@@ -128,6 +154,9 @@ struct ToneAdjustments: Codable, Equatable {
             case .shadows: return shadows
             case .warmth: return warmth
             case .tint: return tint
+            case .blackPoint: return blackPoint
+            case .definition: return definition
+            case .noiseReduction: return noiseReduction
             case .blur: return blur
             }
         }
@@ -141,6 +170,9 @@ struct ToneAdjustments: Codable, Equatable {
             case .shadows: shadows = newValue
             case .warmth: warmth = newValue
             case .tint: tint = newValue
+            case .blackPoint: blackPoint = newValue
+            case .definition: definition = newValue
+            case .noiseReduction: noiseReduction = newValue
             case .blur: blur = newValue
             }
         }
@@ -168,6 +200,9 @@ struct ToneAdjustments: Codable, Equatable {
         shadows = try container.decodeIfPresent(Double.self, forKey: .shadows) ?? 0
         warmth = try container.decodeIfPresent(Double.self, forKey: .warmth) ?? 0
         tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? 0
+        blackPoint = try container.decodeIfPresent(Double.self, forKey: .blackPoint) ?? 0
+        definition = try container.decodeIfPresent(Double.self, forKey: .definition) ?? 0
+        noiseReduction = try container.decodeIfPresent(Double.self, forKey: .noiseReduction) ?? 0
         blur = try container.decodeIfPresent(Double.self, forKey: .blur) ?? 0
     }
 
@@ -176,6 +211,15 @@ struct ToneAdjustments: Codable, Equatable {
     /// and saturation over a settled image.
     func apply(to image: CIImage) -> CIImage {
         var result = image
+
+        // First, so nothing downstream amplifies what is about to be removed.
+        if noiseReduction > 0 {
+            let filter = CIFilter.noiseReduction()
+            filter.inputImage = result
+            filter.noiseLevel = Float(noiseReduction * 0.08)
+            filter.sharpness = 0.4
+            result = filter.outputImage ?? result
+        }
 
         if exposure != 0 {
             let filter = CIFilter.exposureAdjust()
@@ -198,6 +242,21 @@ struct ToneAdjustments: Codable, Equatable {
             result = filter.outputImage ?? result
         }
 
+        if blackPoint != 0 {
+            // Only the foot of the curve moves: positive pushes the darkest
+            // tones to black, negative lifts them off it. Pure tone mapping, so
+            // it means the same thing at any size.
+            let filter = CIFilter.toneCurve()
+            filter.inputImage = result
+            filter.point0 = CGPoint(x: max(0, blackPoint) * 0.2,
+                                    y: max(0, -blackPoint) * 0.15)
+            filter.point1 = CGPoint(x: 0.25, y: 0.25)
+            filter.point2 = CGPoint(x: 0.5, y: 0.5)
+            filter.point3 = CGPoint(x: 0.75, y: 0.75)
+            filter.point4 = CGPoint(x: 1, y: 1)
+            result = filter.outputImage ?? result
+        }
+
         if warmth != 0 || tint != 0 {
             let filter = CIFilter.temperatureAndTint()
             filter.inputImage = result
@@ -213,6 +272,19 @@ struct ToneAdjustments: Codable, Equatable {
             filter.contrast = Float(1 + contrast * 0.5)
             filter.saturation = Float(1 + saturation)
             result = filter.outputImage ?? result
+        }
+
+        if definition != 0 {
+            // An unsharp mask with a large radius is local contrast, not
+            // sharpening: it works on regions rather than edges. The radius is a
+            // fraction of the image so the regions stay the same size relative
+            // to the subject however large the render is.
+            let extent = result.extent
+            let filter = CIFilter.unsharpMask()
+            filter.inputImage = result.clampedToExtent()
+            filter.radius = Float(min(extent.width, extent.height) * 0.02)
+            filter.intensity = Float(definition * 0.8)
+            result = filter.outputImage?.cropped(to: extent) ?? result
         }
 
         if vibrance != 0 {
@@ -609,12 +681,12 @@ final class PhotoEditSession: ObservableObject {
     /// pair is handed back the original image plus the recipe; anything else
     /// sees the rendered result.
     static let formatIdentifier = "com.photolighttable.edit"
-    static let formatVersion = "3"
+    static let formatVersion = "4"
     /// Every version this build can still read. Dropping "1" here would make
     /// existing edits look like another app's work: PhotoKit would hand back the
     /// rendered image instead of the original, and the next edit would compound
     /// on top of the last one.
-    static let readableFormatVersions: Set<String> = ["1", "2", "3"]
+    static let readableFormatVersions: Set<String> = ["1", "2", "3", "4"]
 
     @Published var recipe = PhotoEditRecipe()
     @Published private(set) var preview: PlatformImage?

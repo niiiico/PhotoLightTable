@@ -620,9 +620,8 @@ struct LoupeView: View {
             // The label is only a label. Resetting lives on the control, where
             // the pointer already is, and a double-click on a caption is easy to
             // trigger while trying to read the value.
-            .help(adjustment.isSpatial
-                  ? "\(adjustment.label) — negative sharpens, positive blurs"
-                  : adjustment.label)
+            .help(adjustment.explanation.map { "\(adjustment.label) — \($0)" }
+                  ?? adjustment.label)
 
             Slider(value: Binding(
                 get: { activeTone[adjustment] },
