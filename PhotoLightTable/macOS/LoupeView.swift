@@ -614,12 +614,10 @@ struct LoupeView: View {
                 set: { setTone(adjustment, $0); renderForCurrentTool() }
             ), in: adjustment.range)
             .controlSize(.small)
-            // Simultaneous, so the slider keeps its own drag and click-to-jump;
-            // a plain tap gesture here would swallow both.
-            .simultaneousGesture(TapGesture(count: 2).onEnded {
+            .onDoubleClick {
                 setTone(adjustment, 0)
                 renderForCurrentTool()
-            })
+            }
             .help("Double-click to reset")
         }
     }
@@ -751,9 +749,8 @@ struct LoupeView: View {
                 }
                 Slider(value: $brushRadius, in: 0.01...0.3)
                     .controlSize(.small)
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        brushRadius = BrushStroke.defaultRadius
-                    })
+                    .onDoubleClick { brushRadius = BrushStroke.defaultRadius }
+                    .help("Double-click to reset")
             }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -769,9 +766,10 @@ struct LoupeView: View {
                     set: { value in updateMask(id) { $0.softness = value } }
                 ), in: 0...1)
                 .controlSize(.small)
-                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                .onDoubleClick {
                     updateMask(id) { $0.softness = EditMask.defaultSoftness }
-                })
+                }
+                .help("Double-click to reset")
             }
 
             Button("Clear Strokes") {
