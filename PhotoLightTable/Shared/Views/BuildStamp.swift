@@ -2,27 +2,34 @@ import SwiftUI
 
 /// Version and build, small and out of the way.
 ///
-/// Its real job is answering "is this the build I just made" without checking
-/// process identifiers or file timestamps, so the build number is the part that
-/// has to be legible.
+/// The build number is the commit count, so it is the same on every machine for
+/// the same commit and only ever increases. A trailing "+" means the tree had
+/// uncommitted changes, which is the case where the number alone would be a
+/// claim the build cannot support.
 struct BuildStamp: View {
     var body: some View {
-        Text(Self.text)
+        Text("\(Self.version) (\(Self.label))")
             .font(.system(size: 9, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
             .opacity(0.55)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .help("Version \(Self.version), build \(Self.build)")
+            .help(Self.detail)
     }
 
-    private static var text: String { "\(version) (\(build))" }
-
-    private static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    private static func string(_ key: String) -> String? {
+        Bundle.main.object(forInfoDictionaryKey: key) as? String
     }
 
-    private static var build: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+    private static var version: String { string("CFBundleShortVersionString") ?? "—" }
+
+    private static var label: String {
+        string("LTBuildLabel") ?? string("CFBundleVersion") ?? "—"
+    }
+
+    private static var detail: String {
+        let commit = string("LTBuildCommit") ?? "unknown"
+        let dirty = label.hasSuffix("+") ? " with uncommitted changes" : ""
+        return "Version \(version), build \(label) — commit \(commit)\(dirty)"
     }
 }

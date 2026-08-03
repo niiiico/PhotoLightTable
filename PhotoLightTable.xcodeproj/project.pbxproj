@@ -55,7 +55,7 @@
 				AA0000000000000000000080 /* Sources */,
 				AA0000000000000000000030 /* Frameworks */,
 				AA0000000000000000000090 /* Resources */,
-				AA00000000000000000000G0 /* Bump build number */,
+				AA00000000000000000000G0 /* Stamp build number */,
 			);
 			buildRules = (
 			);
@@ -114,7 +114,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AA00000000000000000000G0 /* Bump build number */ = {
+		AA00000000000000000000G0 /* Stamp build number */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -124,14 +124,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Bump build number";
+			name = "Stamp build number";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# Counter lives outside git: a build number is a fact about this machine, and\n# committing a bump on every build would make the history unreadable.\nCOUNTER=\"$SRCROOT/.buildnumber\"\n[ -f \"$COUNTER\" ] || echo 0 > \"$COUNTER\"\nNEXT=$(( $(cat \"$COUNTER\") + 1 ))\necho \"$NEXT\" > \"$COUNTER\"\n\n# Written into the built plist rather than the project file, so the source tree\n# stays clean and Xcode does not need reloading between builds.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEXT\" \"$PLIST\" 2>/dev/null \\\n    || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $NEXT\" \"$PLIST\"\nfi\n";
+			shellScript = "set -e\n# Derived from the commit count rather than a local tally: the same commit\n# yields the same number on every machine, and history only grows, so it is\n# monotonic without any state to keep in step.\ncd \"$SRCROOT\"\n\nif git rev-parse --git-dir > /dev/null 2>&1; then\n  COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)\n  COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\n  # A build from a modified tree is not the commit it claims to be, so it is\n  # marked rather than being indistinguishable from a clean one.\n  if git diff --quiet HEAD 2>/dev/null; then MARK=\"\"; else MARK=\"+\"; fi\nelse\n  COUNT=0\n  COMMIT=\"unknown\"\n  MARK=\"\"\nfi\n\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  # CFBundleVersion has to stay purely numeric; the marker and the hash go in\n  # keys of our own.\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildLabel ${COUNT}${MARK}\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildLabel string ${COUNT}${MARK}\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildCommit $COMMIT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildCommit string $COMMIT\" \"$PLIST\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
