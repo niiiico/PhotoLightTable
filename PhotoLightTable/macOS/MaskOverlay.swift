@@ -9,6 +9,11 @@ struct MaskOverlay: View {
     @Binding var mask: EditMask
     let imageAspect: CGFloat
 
+    /// Shown while the shape is being changed, then faded out. Leaving it up
+    /// permanently would tint every judgement made about the photo underneath.
+    @State private var showsCoverage = false
+    @State private var fadeTask: Task<Void, Never>?
+
     var body: some View {
         GeometryReader { geo in
             let frame = CropOverlay.fittedRect(aspect: imageAspect, in: geo.size)
@@ -16,6 +21,11 @@ struct MaskOverlay: View {
             let p1 = point(mask.end, in: frame)
 
             ZStack(alignment: .topLeading) {
+                coverage(from: p0, to: p1, in: frame)
+                    .opacity(showsCoverage ? 1 : 0)
+                    .animation(.easeInOut(duration: showsCoverage ? 0.12 : 0.45),
+                               value: showsCoverage)
+
                 guides(from: p0, to: p1, in: frame)
 
                 Path { $0.move(to: p0); $0.addLine(to: p1) }
@@ -28,7 +38,63 @@ struct MaskOverlay: View {
                     .gesture(drag(for: \.end, in: frame))
             }
             .opacity(mask.kind == .brush ? 0 : 1)
+            .onAppear(perform: revealCoverage)
         }
+    }
+
+    /// A wash following the mask's own falloff, so the ramp is visible rather
+    /// than inferred from two dots — where it starts, where it reaches full
+    /// strength, and which side of the line is affected.
+    @ViewBuilder
+    private func coverage(from p0: CGPoint, to p1: CGPoint, in frame: CGRect) -> some View {
+        let tint = Color.red.opacity(0.32)
+        let near: Color = mask.isInverted ? tint : .clear
+        let far: Color = mask.isInverted ? .clear : tint
+
+        switch mask.kind {
+        case .linear:
+            Rectangle()
+                .fill(LinearGradient(
+                    stops: [.init(color: near, location: 0), .init(color: far, location: 1)],
+                    startPoint: unit(p0, in: frame),
+                    endPoint: unit(p1, in: frame)))
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX, y: frame.minY)
+
+        case .radial:
+            let radius = max(1, hypot(p1.x - p0.x, p1.y - p0.y))
+            Rectangle()
+                .fill(RadialGradient(
+                    stops: [.init(color: far, location: 0), .init(color: near, location: 1)],
+                    center: unit(p0, in: frame),
+                    startRadius: 0,
+                    endRadius: radius))
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX, y: frame.minY)
+
+        case .brush:
+            EmptyView()
+        }
+    }
+
+    /// Shows the wash and starts it fading. Called on every drag change, so the
+    /// fade keeps being pushed out while the shape is still moving.
+    private func revealCoverage() {
+        fadeTask?.cancel()
+        showsCoverage = true
+        fadeTask = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            showsCoverage = false
+        }
+    }
+
+    /// SwiftUI gradients take unit points in the view's own space, while the
+    /// handles live in the fitted image rect.
+    private func unit(_ point: CGPoint, in frame: CGRect) -> UnitPoint {
+        guard frame.width > 0, frame.height > 0 else { return .center }
+        return UnitPoint(x: (point.x - frame.minX) / frame.width,
+                         y: (point.y - frame.minY) / frame.height)
     }
 
     /// The extent of the effect: parallel lines through each end for a linear
@@ -79,6 +145,7 @@ struct MaskOverlay: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard frame.width > 0, frame.height > 0 else { return }
+                revealCoverage()
                 mask[keyPath: keyPath] = EditPoint(
                     x: min(max((value.location.x - frame.minX) / frame.width, -0.5), 1.5),
                     y: min(max((value.location.y - frame.minY) / frame.height, -0.5), 1.5))

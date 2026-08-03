@@ -14,9 +14,13 @@ struct BrushOverlay: View {
     /// Painted area is shown while the brush is in hand and hidden otherwise,
     /// so the photo can be judged without a wash of colour over it.
     let showsPaint: Bool
+    /// Feathering, as a fraction of the shorter side — the same value the mask
+    /// is rasterised with.
+    let softness: Double
 
     @State private var strokeID: UUID?
     @State private var pointer: CGPoint?
+    @State private var isPainting = false
 
     var body: some View {
         GeometryReader { geo in
@@ -40,12 +44,22 @@ struct BrushOverlay: View {
                 if let pointer {
                     // The cursor shows the brush's true footprint; a size in the
                     // panel means nothing without seeing it against the photo.
-                    Circle()
-                        .strokeBorder(.white.opacity(0.9), lineWidth: 1)
-                        .background(Circle().fill(.white.opacity(isErasing ? 0 : 0.08)))
-                        .frame(width: diameter(in: frame), height: diameter(in: frame))
-                        .position(pointer)
-                        .allowsHitTesting(false)
+                    // The outer ring is how far the feathering reaches, which is
+                    // otherwise invisible until something is painted.
+                    ZStack {
+                        Circle()
+                            .strokeBorder(.white.opacity(0.25),
+                                          style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            .frame(width: diameter(in: frame) + featherRadius(in: frame) * 2,
+                                   height: diameter(in: frame) + featherRadius(in: frame) * 2)
+
+                        Circle()
+                            .strokeBorder(.white.opacity(0.9), lineWidth: 1)
+                            .background(Circle().fill(.white.opacity(isErasing ? 0 : 0.08)))
+                            .frame(width: diameter(in: frame), height: diameter(in: frame))
+                    }
+                    .position(pointer)
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -53,11 +67,16 @@ struct BrushOverlay: View {
 
     /// Erase strokes are composited out of the painted area rather than drawn in
     /// another colour, so what is shown matches what the mask will contain.
+    ///
+    /// The whole thing is blurred by the mask's own softness, so the wash shows
+    /// how far the effect actually feathers past the stroke rather than implying
+    /// a hard edge the render won't have. It brightens while painting, which is
+    /// when the extent is the thing being judged.
     private func paint(in frame: CGRect) -> some View {
         ZStack {
             ForEach(mask.strokes) { stroke in
                 path(for: stroke, in: frame)
-                    .stroke(Color.red.opacity(0.35),
+                    .stroke(Color.red.opacity(isPainting ? 0.42 : 0.3),
                             style: StrokeStyle(lineWidth: lineWidth(stroke.radius, in: frame),
                                                lineCap: .round,
                                                lineJoin: .round))
@@ -65,7 +84,15 @@ struct BrushOverlay: View {
             }
         }
         .compositingGroup()
+        .blur(radius: featherRadius(in: frame))
+        .animation(.easeOut(duration: 0.15), value: isPainting)
         .allowsHitTesting(false)
+    }
+
+    /// Mirrors the rasteriser, which blurs the mask by `softness * shortSide *
+    /// 0.12` — so the wash feathers by the same proportion the render will.
+    private func featherRadius(in frame: CGRect) -> CGFloat {
+        softness * min(frame.width, frame.height) * 0.12
     }
 
     private func path(for stroke: BrushStroke, in frame: CGRect) -> Path {
@@ -88,6 +115,7 @@ struct BrushOverlay: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 pointer = value.location
+                isPainting = true
                 guard frame.width > 0, frame.height > 0 else { return }
                 let point = EditPoint(x: (value.location.x - frame.minX) / frame.width,
                                       y: (value.location.y - frame.minY) / frame.height)
@@ -110,7 +138,10 @@ struct BrushOverlay: View {
                     strokeID = stroke.id
                 }
             }
-            .onEnded { _ in strokeID = nil }
+            .onEnded { _ in
+                strokeID = nil
+                isPainting = false
+            }
     }
 
     private func point(in frame: CGRect, _ point: EditPoint) -> CGPoint {

@@ -131,7 +131,8 @@ struct LoupeView: View {
                                      imageAspect: aspect,
                                      brushRadius: brushRadius,
                                      isErasing: isErasing,
-                                     showsPaint: true)
+                                     showsPaint: true,
+                                     softness: selected.softness)
                     } else {
                         MaskOverlay(mask: maskBinding(selected.id), imageAspect: aspect)
                     }
