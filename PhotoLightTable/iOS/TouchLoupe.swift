@@ -17,6 +17,7 @@ struct TouchLoupe: View {
     @State private var isLoading = false
     @State private var drag: CGSize = .zero
     @State private var showsChrome = true
+    @State private var isEditing = false
 
     /// How far a swipe has to travel to count, so a nudge while panning doesn't
     /// silently rate a photo.
@@ -28,6 +29,17 @@ struct TouchLoupe: View {
     }
 
     var body: some View {
+        if isEditing, let current {
+            TouchEditor(item: current) {
+                isEditing = false
+                Task { await load() }
+            }
+        } else {
+            review
+        }
+    }
+
+    private var review: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
@@ -139,6 +151,14 @@ struct TouchLoupe: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.white.opacity(0.8))
                 }
+
+                Button { isEditing = true } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.trailing, 6)
+                }
+                .accessibilityLabel("Edit")
 
                 Button { dismiss() } label: {
                     Image(systemName: "xmark.circle.fill")
