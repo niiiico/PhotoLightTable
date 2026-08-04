@@ -23,8 +23,7 @@ struct TouchEditor: View {
     @State private var selectedMaskID: UUID?
     @State private var brushRadius = BrushStroke.defaultRadius
     @State private var isErasing = false
-    @State private var comparison: ComparisonMode = .off
-    @State private var splitPosition = 0.5
+    @State private var isShowingBefore = false
     @State private var isPickingWhitePoint = false
     @State private var errorMessage: String?
 
@@ -71,6 +70,10 @@ struct TouchEditor: View {
         .background(Color.black)
         .task {
             edit.modelContext = modelContext
+            // Kept ready throughout: it is only re-rendered when the loaded
+            // recipe or the crop changes, so holding the photo is instant
+            // rather than waiting on a render.
+            edit.wantsBeforePreview = true
             await edit.begin(for: item)
             renderForCurrentTool()
         }
@@ -81,12 +84,11 @@ struct TouchEditor: View {
     private var photo: some View {
         GeometryReader { geo in
             ZStack {
-                if comparison.isActive,
-                   let before = edit.beforePreview,
-                   let after = edit.preview {
-                    ComparisonView(before: before, after: after,
-                                   mode: comparison, splitPosition: $splitPosition)
-                } else if let image = edit.preview {
+                // The original replaces the edit in place rather than sitting
+                // beside it: the same pixels in the same position is what makes
+                // a difference legible, and there is no room on a phone for two
+                // copies of the photo.
+                if let image = isShowingBefore ? (edit.beforePreview ?? edit.preview) : edit.preview {
                     Image(platformImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -94,6 +96,21 @@ struct TouchEditor: View {
                         .offset(zoom.pan)
                 } else {
                     ProgressView().controlSize(.large).tint(.white)
+                }
+
+                if isShowingBefore {
+                    VStack {
+                        Text("ORIGINAL")
+                            .font(.caption2.weight(.heavy))
+                            .kerning(0.8)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .padding(.top, 16)
+                        Spacer()
+                    }
+                    .allowsHitTesting(false)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -104,6 +121,7 @@ struct TouchEditor: View {
             // needed.
             .gesture(handlesAreActive ? nil : panGesture)
             .simultaneousGesture(handlesAreActive ? nil : magnifyGesture)
+            .simultaneousGesture(holdToCompare)
         }
     }
 
@@ -158,6 +176,24 @@ struct TouchEditor: View {
         MagnifyGesture()
             .onChanged { zoom.magnify($0.magnification) }
             .onEnded { _ in zoom.endMagnify() }
+    }
+
+    /// Press and hold anywhere on the photo to see it as it was.
+    ///
+    /// Sequenced rather than a plain long press, because the state has to
+    /// follow the finger being down: a long press alone reports that it fired,
+    /// not that it is still being held, and the original would never go away.
+    private var holdToCompare: some Gesture {
+        LongPressGesture(minimumDuration: 0.22)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                if case .second(true, _) = value {
+                    withAnimation(.easeOut(duration: 0.1)) { isShowingBefore = true }
+                }
+            }
+            .onEnded { _ in
+                withAnimation(.easeOut(duration: 0.1)) { isShowingBefore = false }
+            }
     }
 
     // MARK: - Panel
@@ -374,12 +410,12 @@ struct TouchEditor: View {
             }
 
             HStack(spacing: 12) {
-                Button {
-                    setComparison(comparison.isActive ? .off : .split)
-                } label: {
-                    Image(systemName: comparison.symbolName)
+                if edit.hasVisibleChange {
+                    Label("Hold photo for original", systemImage: "hand.tap")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .labelStyle(.titleAndIcon)
                 }
-                .disabled(!edit.hasVisibleChange)
 
                 if edit.hasExistingEdit {
                     Button {
@@ -428,16 +464,6 @@ struct TouchEditor: View {
         if newTool != .masks { selectedMaskID = nil }
         isPickingWhitePoint = false
         zoom.reset()
-        renderForCurrentTool()
-    }
-
-    private func setComparison(_ mode: ComparisonMode) {
-        comparison = mode
-        edit.wantsBeforePreview = mode.isActive
-        if mode.isActive {
-            selectedMaskID = nil
-            zoom.reset()
-        }
         renderForCurrentTool()
     }
 

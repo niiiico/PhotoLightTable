@@ -765,6 +765,10 @@ final class PhotoEditSession: ObservableObject {
     private let context = CIContext()
     private var previewTask: Task<Void, Never>?
     private var pendingApplyCrop = true
+    /// What the last "before" was rendered from, so it is only redrawn when it
+    /// would actually differ.
+    private var renderedBefore: PhotoEditRecipe?
+    private var renderedBeforeCrop: Bool?
     /// Which asset `input` was obtained for, so a commit can refuse a mismatch.
     private var inputAssetID: String?
     /// Bumped per `begin`, so a slow load that finishes after a newer one is
@@ -826,6 +830,8 @@ final class PhotoEditSession: ObservableObject {
         previewBase = nil
         preview = nil
         beforePreview = nil
+        renderedBefore = nil
+        renderedBeforeCrop = nil
         recipe = .neutral
         loadedRecipe = .neutral
         hasExistingEdit = false
@@ -866,11 +872,24 @@ final class PhotoEditSession: ObservableObject {
 
         guard wantsBeforePreview else {
             beforePreview = nil
+            renderedBefore = nil
             return
         }
-        let before = beforeRecipe.apply(to: previewBase, applyCrop: applyCrop)
+
+        // The "before" depends on the recipe as loaded and the current crop,
+        // neither of which changes while a slider moves. Without this it would
+        // be redrawn on every frame of every drag, doubling the cost of the
+        // preview for an image that is identical each time.
+        let wanted = beforeRecipe
+        guard beforePreview == nil
+                || renderedBefore != wanted
+                || renderedBeforeCrop != applyCrop else { return }
+
+        let before = wanted.apply(to: previewBase, applyCrop: applyCrop)
         if let cgImage = context.createCGImage(before, from: before.extent) {
             beforePreview = PlatformImage.from(cgImage)
+            renderedBefore = wanted
+            renderedBeforeCrop = applyCrop
         }
     }
 
