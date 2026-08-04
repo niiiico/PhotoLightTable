@@ -26,6 +26,8 @@ struct TouchEditor: View {
     @State private var isShowingBefore = false
     @State private var isPickingWhitePoint = false
     @State private var errorMessage: String?
+    @State private var variantLabel: String?
+    @EnvironmentObject private var ratings: RatingStore
 
     enum Tool: String, CaseIterable, Identifiable {
         case adjust, crop, masks
@@ -68,6 +70,17 @@ struct TouchEditor: View {
             }
         }
         .background(Color.black)
+        .alert("Save as a new photo",
+               isPresented: Binding(get: { variantLabel != nil },
+                                    set: { if !$0 { variantLabel = nil } })) {
+            TextField("Name", text: Binding(
+                get: { variantLabel ?? "" },
+                set: { variantLabel = $0 }))
+            Button("Cancel", role: .cancel) { variantLabel = nil }
+            Button("Save") { saveVariant() }
+        } message: {
+            Text("The original keeps its own edits. This treatment is added to your library as a separate photo, alongside it.")
+        }
         .task {
             edit.modelContext = modelContext
             // Kept ready throughout: it is only re-rendered when the loaded
@@ -434,6 +447,13 @@ struct TouchEditor: View {
 
                 Spacer()
 
+                Button {
+                    variantLabel = edit.recipe.suggestedVariantLabel
+                } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                }
+                .disabled(edit.recipe.isNeutral || edit.isCommitting)
+
                 Button("Cancel") { onFinished() }
 
                 Button(edit.isDirty ? "Save" : "Done") { save() }
@@ -445,6 +465,24 @@ struct TouchEditor: View {
     }
 
     // MARK: - Actions
+
+    private func saveVariant() {
+        guard let label = variantLabel else { return }
+        let recipe = edit.recipe
+        variantLabel = nil
+        Task {
+            do {
+                try await PhotoVariants.create(from: item,
+                                               applying: recipe,
+                                               label: label.isEmpty ? "Variant" : label,
+                                               context: modelContext,
+                                               library: library)
+                ratings.reloadVariants()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
 
     private func save() {
         guard edit.isDirty else { onFinished(); return }

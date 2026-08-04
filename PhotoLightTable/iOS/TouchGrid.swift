@@ -57,7 +57,8 @@ struct TouchGrid: View {
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: isSelecting && app.selectedIDs.contains(item.id),
-                      imageVersion: loader.version(of: item.id))
+                      imageVersion: loader.version(of: item.id),
+                      variantLabel: ratings.variantLabel(for: item.id))
         .equatable()
         .onTapGesture {
             if isSelecting {

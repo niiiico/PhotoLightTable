@@ -18,6 +18,8 @@ final class RatingStore: ObservableObject {
     private var rows: [String: AssetRating] = [:]
     private let syncer: AlbumSyncer
     private var baselines: [String: AlbumBaseline] = [:]
+    /// Label per asset that is a variant of another, for the grid's badge.
+    @Published private(set) var variantLabels: [String: String] = [:]
 
     /// Set while folding remote changes in, so applying them doesn't schedule
     /// another sync and bounce the same edit back at Photos.
@@ -57,7 +59,16 @@ final class RatingStore: ObservableObject {
         if let stored = try? context.fetch(FetchDescriptor<AlbumBaseline>()) {
             for row in stored { baselines[row.key] = row }
         }
+        reloadVariants()
     }
+
+    func reloadVariants() {
+        guard let rows = try? context.fetch(FetchDescriptor<PhotoVariant>()) else { return }
+        variantLabels = Dictionary(rows.map { ($0.assetID, $0.label) },
+                                   uniquingKeysWith: { _, latest in latest })
+    }
+
+    func variantLabel(for assetID: String) -> String? { variantLabels[assetID] }
 
     // MARK: - Baselines
 

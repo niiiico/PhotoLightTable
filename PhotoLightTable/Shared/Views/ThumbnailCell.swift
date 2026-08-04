@@ -13,6 +13,8 @@ struct ThumbnailCell: View, Equatable {
     /// is what makes an edited photo reload rather than serve its old cache
     /// entry — and what lets `.equatable()` see that this cell is now different.
     let imageVersion: Int
+    /// Non-nil when this photo is an alternative treatment of another.
+    var variantLabel: String? = nil
 
     @State private var image: PlatformImage?
     @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
@@ -114,6 +116,20 @@ struct ThumbnailCell: View, Equatable {
                         .padding(6)
                 }
             }
+            if let variantLabel {
+                HStack {
+                    Text(variantLabel)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.black.opacity(0.55), in: Capsule())
+                        .padding(.leading, 5)
+                    Spacer()
+                }
+                .padding(.top, 2)
+            }
+
             Spacer()
             if showsSelectionBadge {
                 HStack {
@@ -161,5 +177,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.isFocused == rhs.isFocused
             && lhs.showsSelectionBadge == rhs.showsSelectionBadge
             && lhs.imageVersion == rhs.imageVersion
+            && lhs.variantLabel == rhs.variantLabel
     }
 }

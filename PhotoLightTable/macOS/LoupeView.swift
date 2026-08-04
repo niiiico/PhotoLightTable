@@ -26,6 +26,7 @@ struct LoupeView: View {
     @State private var isEditing = false
     @State private var showsHistory = false
     @State private var editError: String?
+    @State private var variantLabel: String?
     @State private var isCropping = false
     @State private var cropAspect: CropAspect = .free
     @State private var selectedMaskID: UUID?
@@ -67,6 +68,17 @@ struct LoupeView: View {
             zoomState.startMonitoringScroll()
         }
         .onDisappear { zoomState.stopMonitoringScroll() }
+        .alert("Save as a new photo",
+               isPresented: Binding(get: { variantLabel != nil },
+                                    set: { if !$0 { variantLabel = nil } })) {
+            TextField("Name", text: Binding(
+                get: { variantLabel ?? "" },
+                set: { variantLabel = $0 }))
+            Button("Cancel", role: .cancel) { variantLabel = nil }
+            Button("Save") { saveVariant() }
+        } message: {
+            Text("The original keeps its own edits. This treatment is added to your library as a separate photo, alongside it.")
+        }
         .animation(.easeOut(duration: 0.12), value: currentPick)
         .onKeyPress(action: handleKey)
         .task(id: current?.id) {
@@ -514,6 +526,15 @@ struct LoupeView: View {
 
                 Spacer()
 
+                Button {
+                    variantLabel = edit.recipe.suggestedVariantLabel
+                } label: {
+                    Label("Save as New Photo", systemImage: "plus.rectangle.on.rectangle")
+                        .labelStyle(.iconOnly)
+                }
+                .help("Keep the original and add this treatment as a separate photo")
+                .disabled(edit.recipe.isNeutral || edit.isCommitting)
+
                 Button("Cancel") { endEditing(commit: false) }
 
                 Button(edit.isDirty ? "Save" : "Done") { endEditing(commit: true) }
@@ -919,6 +940,27 @@ struct LoupeView: View {
 
     private func renderForCurrentTool() {
         edit.renderPreview(applyCrop: !showsUncroppedFrame)
+    }
+
+    /// Keeps the original as it is and adds this treatment as a photo of its
+    /// own, built from the original pixels so it stays editable rather than
+    /// being a flattened copy.
+    private func saveVariant() {
+        guard let current, let label = variantLabel else { return }
+        let recipe = edit.recipe
+        variantLabel = nil
+        Task {
+            do {
+                try await PhotoVariants.create(from: current,
+                                               applying: recipe,
+                                               label: label.isEmpty ? "Variant" : label,
+                                               context: modelContext,
+                                               library: library)
+                ratings.reloadVariants()
+            } catch {
+                editError = error.localizedDescription
+            }
+        }
     }
 
     private func endEditing(commit: Bool) {

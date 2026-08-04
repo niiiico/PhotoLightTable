@@ -12,7 +12,7 @@ struct PhotoLightTableApp: App {
     @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
-        let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self, PhotoEditVersion.self])
+        let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self, PhotoEditVersion.self, PhotoVariant.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         let container: ModelContainer
         do {

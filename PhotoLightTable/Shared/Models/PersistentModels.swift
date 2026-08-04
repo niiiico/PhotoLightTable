@@ -48,6 +48,27 @@ final class PhotoEditVersion {
     }
 }
 
+/// A photo created as an alternative treatment of another.
+///
+/// Photos has no notion of one asset being a version of another — the duplicate
+/// is an ordinary photo in the library — so the relationship is ours to keep.
+@Model
+final class PhotoVariant {
+    /// The new asset.
+    var assetID: String
+    /// The asset it was made from.
+    var originalAssetID: String
+    var label: String
+    var createdAt: Date
+
+    init(assetID: String, originalAssetID: String, label: String, createdAt: Date = .now) {
+        self.assetID = assetID
+        self.originalAssetID = originalAssetID
+        self.label = label
+        self.createdAt = createdAt
+    }
+}
+
 /// What an album contained at the end of the last successful sync.
 ///
 /// Without this, sync can only overwrite: the app cannot tell a photo you added

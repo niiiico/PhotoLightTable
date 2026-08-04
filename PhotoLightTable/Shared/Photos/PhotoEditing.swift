@@ -608,6 +608,18 @@ struct PhotoEditRecipe: Codable, Equatable {
 
     var hasNeutralTone: Bool { tone.isNeutral }
 
+    /// A name for this treatment, so a duplicate arrives already described
+    /// rather than as "Copy".
+    var suggestedVariantLabel: String {
+        if tone.saturation <= -0.99 { return "B&W" }
+        if tone.saturation < -0.4 { return "Muted" }
+        if tone.warmth > 0.3 { return "Warm" }
+        if tone.warmth < -0.3 { return "Cool" }
+        if tone.contrast > 0.3 { return "Punchy" }
+        if !crop.isFull { return "Crop" }
+        return "Variant"
+    }
+
     /// True when the whole-image tone carries nothing at all, white point
     /// included — `Adjustment.allCases` doesn't cover it, since it isn't a
     /// slider.

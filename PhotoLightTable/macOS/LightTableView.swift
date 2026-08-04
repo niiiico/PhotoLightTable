@@ -212,7 +212,8 @@ struct LightTableView: View {
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: app.selectedIDs.count > 1
                           && app.selectedIDs.contains(item.id),
-                      imageVersion: loader.version(of: item.id))
+                      imageVersion: loader.version(of: item.id),
+                      variantLabel: ratings.variantLabel(for: item.id))
             .equatable()
             .id(item.id)
             .background(
