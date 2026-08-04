@@ -30,10 +30,13 @@ struct TouchLoupe: View {
 
     var body: some View {
         if isEditing, let current {
-            TouchEditor(item: current) {
+            TouchEditor(item: current, onFinished: {
                 isEditing = false
                 Task { await load() }
-            }
+            }, onOpenVersion: { assetID in
+                guard items.contains(where: { $0.id == assetID }) else { return }
+                app.focusID = assetID
+            })
         } else {
             review
         }

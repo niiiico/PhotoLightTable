@@ -920,6 +920,16 @@ final class PhotoEditSession: ObservableObject {
     /// Whether anything actually differs from how the session opened.
     var hasVisibleChange: Bool { recipe != loadedRecipe }
 
+    /// Puts the recipe back to how the photo was when the session opened.
+    ///
+    /// Used after a treatment is saved as a separate photo: the changes have
+    /// gone somewhere, and leaving them applied to the original would mean the
+    /// next save — or simply walking to the next photo — altered it too.
+    func discardChanges() {
+        recipe = loadedRecipe
+        renderPreview(applyCrop: pendingApplyCrop)
+    }
+
     // MARK: - White balance
 
     /// Reads the colour at a point and stores it as the neutral reference.

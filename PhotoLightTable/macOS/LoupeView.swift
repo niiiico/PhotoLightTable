@@ -394,6 +394,13 @@ struct LoupeView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let current {
+                        VersionsStrip(family: ratings.family(of: current.id),
+                                      currentID: current.id,
+                                      label: { ratings.variantLabel(for: $0) },
+                                      onSelect: { openVersion($0) })
+                    }
+
                     VStack(alignment: .leading, spacing: 10) {
                         sectionHeading(selectedMask == nil ? "Adjust" : "Adjust Mask",
                                        isReset: activeTone.isNeutral && activeTone.whitePoint == nil) {
@@ -945,6 +952,31 @@ struct LoupeView: View {
     /// Keeps the original as it is and adds this treatment as a photo of its
     /// own, built from the original pixels so it stays editable rather than
     /// being a flattened copy.
+    /// Switches the session to another photo in the family.
+    ///
+    /// Committing first rather than discarding: the same rule as moving between
+    /// photos with the arrow keys, so a version chip is not the one control
+    /// that silently throws work away.
+    private func openVersion(_ assetID: String) {
+        guard let target = items.first(where: { $0.id == assetID }) else {
+            editError = "That version isn't in the current selection."
+            return
+        }
+        guard isEditing, edit.isDirty, let current else {
+            app.focusID = target.id
+            return
+        }
+        Task {
+            do {
+                try await edit.commit(for: current)
+                await reloadAfterEdit()
+                app.focusID = target.id
+            } catch {
+                editError = error.localizedDescription
+            }
+        }
+    }
+
     private func saveVariant() {
         guard let current, let label = variantLabel else { return }
         let recipe = edit.recipe
@@ -957,6 +989,11 @@ struct LoupeView: View {
                                                context: modelContext,
                                                library: library)
                 ratings.reloadVariants()
+                // The treatment now lives on the new photo, so the original
+                // goes back to how it was. Leaving it applied would mean the
+                // next save — or just walking to the next photo, which commits
+                // — quietly changed the original too.
+                edit.discardChanges()
             } catch {
                 editError = error.localizedDescription
             }

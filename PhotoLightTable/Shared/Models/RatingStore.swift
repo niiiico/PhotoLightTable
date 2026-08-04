@@ -20,6 +20,13 @@ final class RatingStore: ObservableObject {
     private var baselines: [String: AlbumBaseline] = [:]
     /// Label per asset that is a variant of another, for the grid's badge.
     @Published private(set) var variantLabels: [String: String] = [:]
+    /// Bumped when the variant relationships change, so derived state can tell.
+    @Published private(set) var variantsRevision = 0
+
+    /// Every asset that came from the same pixels, keyed by the one they all
+    /// descend from.
+    private var familyByRoot: [String: [String]] = [:]
+    private var rootByAsset: [String: String] = [:]
 
     /// Set while folding remote changes in, so applying them doesn't schedule
     /// another sync and bounce the same edit back at Photos.
@@ -66,9 +73,48 @@ final class RatingStore: ObservableObject {
         guard let rows = try? context.fetch(FetchDescriptor<PhotoVariant>()) else { return }
         variantLabels = Dictionary(rows.map { ($0.assetID, $0.label) },
                                    uniquingKeysWith: { _, latest in latest })
+
+        // A variant can itself be varied, so the parent link is followed to the
+        // end: everything that shares a pixel source belongs to one family, not
+        // to whichever photo it was made from.
+        var parent: [String: String] = [:]
+        for row in rows { parent[row.assetID] = row.originalAssetID }
+
+        rootByAsset = [:]
+        for id in parent.keys {
+            var current = id
+            var seen: Set<String> = [id]
+            while let next = parent[current], !seen.contains(next) {
+                current = next
+                seen.insert(next)
+            }
+            rootByAsset[id] = current
+        }
+
+        var family: [String: [String]] = [:]
+        for row in rows.sorted(by: { $0.createdAt < $1.createdAt }) {
+            guard let root = rootByAsset[row.assetID] else { continue }
+            family[root, default: []].append(row.assetID)
+        }
+        familyByRoot = family
+        variantsRevision &+= 1
     }
 
     func variantLabel(for assetID: String) -> String? { variantLabels[assetID] }
+
+    /// The photo everything in this family descends from.
+    func rootAsset(of assetID: String) -> String { rootByAsset[assetID] ?? assetID }
+
+    /// The whole family in order — the source first, then its variants as they
+    /// were made. A photo with no variants is a family of one.
+    func family(of assetID: String) -> [String] {
+        let root = rootAsset(of: assetID)
+        guard let variants = familyByRoot[root], !variants.isEmpty else { return [assetID] }
+        return [root] + variants
+    }
+
+    /// Variants belonging to this source, if any.
+    func variants(of assetID: String) -> [String] { familyByRoot[assetID] ?? [] }
 
     // MARK: - Baselines
 

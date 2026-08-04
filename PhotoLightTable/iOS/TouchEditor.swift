@@ -11,6 +11,8 @@ import SwiftUI
 struct TouchEditor: View {
     let item: PhotoItem
     let onFinished: () -> Void
+    /// Set by the loupe, which owns which photo is showing.
+    var onOpenVersion: ((String) -> Void)?
 
     @EnvironmentObject private var library: PhotoLibraryService
     @Environment(\.modelContext) private var modelContext
@@ -226,6 +228,11 @@ struct TouchEditor: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    VersionsStrip(family: ratings.family(of: item.id),
+                                  currentID: item.id,
+                                  label: { ratings.variantLabel(for: $0) },
+                                  onSelect: { onOpenVersion?($0) })
+
                     switch tool {
                     case .adjust: adjustControls
                     case .crop: cropControls
@@ -478,6 +485,9 @@ struct TouchEditor: View {
                                                context: modelContext,
                                                library: library)
                 ratings.reloadVariants()
+                // The treatment now lives on the new photo; the original goes
+                // back to how it was rather than staying quietly modified.
+                edit.discardChanges()
             } catch {
                 errorMessage = error.localizedDescription
             }

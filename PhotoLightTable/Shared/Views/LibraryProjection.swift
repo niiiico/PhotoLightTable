@@ -17,6 +17,7 @@ final class LibraryProjection: ObservableObject {
         var sortOrder: PhotoSortOrder
         var libraryVersion: Int
         var ratingsRevision: Int
+        var variantsRevision: Int
         var eventsStamp: Int
     }
 
@@ -40,15 +41,55 @@ final class LibraryProjection: ObservableObject {
                          sortOrder: app.sortOrder,
                          libraryVersion: libraryVersion,
                          ratingsRevision: ratings.revision,
+                         variantsRevision: ratings.variantsRevision,
                          eventsStamp: Self.stamp(of: events))
         guard newKey != key else { return }
         key = newKey
 
         scoped = app.scope(items, events: events)
-        visible = app.sort(app.filter(scoped, ratings: ratings))
+        visible = Self.grouped(app.sort(app.filter(scoped, ratings: ratings)), ratings: ratings)
         tally = ScopeTally(items: scoped, ratings: ratings)
         sections = PhotoLibraryService.groupByDay(visible,
                                                   oldestFirst: app.sortOrder == .oldestFirst)
+    }
+
+    /// Keeps photos made from the same pixels next to each other.
+    ///
+    /// A variant copies its source's creation date so it already sorts into the
+    /// same day, but within that day nothing keeps the two adjacent. Emitting a
+    /// source together with its variants makes the relationship visible in the
+    /// grid rather than something to be inferred from a badge.
+    ///
+    /// A variant whose source is filtered out stays where it fell — hiding it
+    /// because its parent is hidden would be a second, invisible filter.
+    private static func grouped(_ items: [PhotoItem], ratings: RatingStore) -> [PhotoItem] {
+        guard !ratings.variantLabels.isEmpty else { return items }
+
+        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var emitted = Set<String>()
+        var result: [PhotoItem] = []
+        result.reserveCapacity(items.count)
+
+        for item in items where !emitted.contains(item.id) {
+            let root = ratings.rootAsset(of: item.id)
+            // Held back so it can follow its source below.
+            if root != item.id, byID[root] != nil { continue }
+
+            result.append(item)
+            emitted.insert(item.id)
+
+            for variantID in ratings.variants(of: item.id) {
+                guard let variant = byID[variantID], !emitted.contains(variantID) else { continue }
+                result.append(variant)
+                emitted.insert(variantID)
+            }
+        }
+
+        // Anything held back whose source turned out not to be here after all.
+        for item in items where !emitted.contains(item.id) {
+            result.append(item)
+        }
+        return result
     }
 
     /// Cheap structural summary of the events, so edits to a date range or to
