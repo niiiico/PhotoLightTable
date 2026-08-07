@@ -454,12 +454,17 @@ struct TouchEditor: View {
 
                 Spacer()
 
-                Button {
-                    variantLabel = edit.recipe.suggestedVariantLabel
+                Menu {
+                    Button("Save as New Photo…") {
+                        variantLabel = edit.recipe.suggestedVariantLabel
+                    }
+                    .disabled(edit.recipe.isNeutral)
+
+                    Button("Split into Left and Right") { splitLeftRight() }
                 } label: {
                     Image(systemName: "plus.rectangle.on.rectangle")
                 }
-                .disabled(edit.recipe.isNeutral || edit.isCommitting)
+                .disabled(edit.isCommitting)
 
                 Button("Cancel") { onFinished() }
 
@@ -472,6 +477,22 @@ struct TouchEditor: View {
     }
 
     // MARK: - Actions
+
+    private func splitLeftRight() {
+        let recipe = edit.recipe
+        Task {
+            do {
+                try await PhotoVariants.splitLeftRight(item,
+                                                       applying: recipe,
+                                                       context: modelContext,
+                                                       library: library)
+                ratings.reloadVariants()
+                edit.discardChanges()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
 
     private func saveVariant() {
         guard let label = variantLabel else { return }

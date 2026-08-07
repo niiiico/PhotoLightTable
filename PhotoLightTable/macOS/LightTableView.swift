@@ -13,6 +13,7 @@ struct LightTableView: View {
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
+    @EnvironmentObject private var library: PhotoLibraryService
     /// Observed so a changed asset's version reaches the cell that shows it.
     @ObservedObject private var loader = ThumbnailLoader.shared
     @Environment(\.modelContext) private var context
@@ -142,6 +143,18 @@ struct LightTableView: View {
             }
     }
 
+    /// Splitting from the grid uses the photo as it stands, since there is no
+    /// session open to take a recipe from.
+    private func splitLeftRight(_ item: PhotoItem) {
+        Task {
+            _ = try? await PhotoVariants.splitLeftRight(item,
+                                                        applying: .neutral,
+                                                        context: context,
+                                                        library: library)
+            ratings.reloadVariants()
+        }
+    }
+
     private func photoItems(for ids: [String]) -> [PhotoItem] {
         let wanted = Set(ids)
         return items.filter { wanted.contains($0.id) }
@@ -269,6 +282,8 @@ struct LightTableView: View {
         if let current = currentEvent {
             Button("Remove from “\(current.name)”") { remove(targets, from: current) }
         }
+        Divider()
+        Button("Split into Left and Right") { splitLeftRight(item) }
         Divider()
         Button("Copy Adjustments") {
             Task { await clipboard.copy(from: item) }

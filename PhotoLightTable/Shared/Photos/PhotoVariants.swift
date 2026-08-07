@@ -68,6 +68,49 @@ enum PhotoVariants {
         return newID
     }
 
+    /// Splits a photo into two, side by side, as separate photos.
+    ///
+    /// Built on the same path as any other variant, so each half is a real
+    /// photo from the original pixels with a crop applied non-destructively —
+    /// the halves can be re-cropped, adjusted or reverted afterwards, which a
+    /// pair of flattened exports could not.
+    ///
+    /// The original is left untouched. Two scanned pages on one frame become
+    /// two pages without losing the sheet they came from.
+    @discardableResult
+    static func splitLeftRight(_ item: PhotoItem,
+                               applying recipe: PhotoEditRecipe,
+                               context: ModelContext?,
+                               library: PhotoLibraryService?) async throws -> [String] {
+        var created: [String] = []
+        for half in Half.allCases {
+            var halved = recipe
+            halved.crop = half.crop(within: recipe.crop)
+            created.append(try await create(from: item,
+                                            applying: halved,
+                                            label: half.label,
+                                            context: context,
+                                            library: library))
+        }
+        return created
+    }
+
+    enum Half: CaseIterable {
+        case left, right
+
+        var label: String { self == .left ? "Left" : "Right" }
+
+        /// Halves whatever is currently framed rather than the whole file, so
+        /// splitting after a crop divides what is actually visible.
+        func crop(within crop: CropRect) -> CropRect {
+            let width = crop.width / 2
+            return CropRect(x: self == .left ? crop.x : crop.x + width,
+                            y: crop.y,
+                            width: width,
+                            height: crop.height)
+        }
+    }
+
     private static func record(_ assetID: String,
                                from originalID: String,
                                label: String,

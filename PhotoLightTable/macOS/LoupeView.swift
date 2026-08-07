@@ -533,14 +533,24 @@ struct LoupeView: View {
 
                 Spacer()
 
-                Button {
-                    variantLabel = edit.recipe.suggestedVariantLabel
+                Menu {
+                    Button("Save as New Photo…") {
+                        variantLabel = edit.recipe.suggestedVariantLabel
+                    }
+                    .disabled(edit.recipe.isNeutral)
+
+                    Divider()
+
+                    Button("Split into Left and Right") { splitLeftRight() }
                 } label: {
-                    Label("Save as New Photo", systemImage: "plus.rectangle.on.rectangle")
+                    Label("New Photo", systemImage: "plus.rectangle.on.rectangle")
                         .labelStyle(.iconOnly)
                 }
-                .help("Keep the original and add this treatment as a separate photo")
-                .disabled(edit.recipe.isNeutral || edit.isCommitting)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Add a copy of this photo to your library, leaving the original as it is")
+                .disabled(edit.isCommitting)
 
                 Button("Cancel") { endEditing(commit: false) }
 
@@ -971,6 +981,23 @@ struct LoupeView: View {
                 try await edit.commit(for: current)
                 await reloadAfterEdit()
                 app.focusID = target.id
+            } catch {
+                editError = error.localizedDescription
+            }
+        }
+    }
+
+    private func splitLeftRight() {
+        guard let current else { return }
+        let recipe = edit.recipe
+        Task {
+            do {
+                try await PhotoVariants.splitLeftRight(current,
+                                                       applying: recipe,
+                                                       context: modelContext,
+                                                       library: library)
+                ratings.reloadVariants()
+                edit.discardChanges()
             } catch {
                 editError = error.localizedDescription
             }
