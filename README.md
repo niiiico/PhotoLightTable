@@ -38,6 +38,7 @@ focused, so culling is a rhythm rather than press-then-arrow.
 | `E` | Enter the editor; again to commit and leave |
 | `C` | Crop, while editing |
 | `\` | Before/after comparison, while editing |
+| `Z` | Take back the last brush stroke (⇧`Z` puts it back) |
 | Esc | Unwind one layer: eyedropper → crop → editor (discarding) → close |
 
 While editing, the digits and the verdict keys belong to the panel's controls
@@ -304,6 +305,17 @@ slider per parameter, so adding one is a case, not a view.
 Masks carry the same `ToneAdjustments` as the whole image, which is why blur
 works through a gradient for nothing. A mask's shape glows while you're changing
 it, so you can see where it reaches before letting go.
+
+For a brush, that glow follows **what is being judged**. It shows while the
+brush is in hand — painting, changing size or softness, switching to erase,
+taking a stroke back, or selecting the mask — and gets out of the way the moment
+a tonal control is touched, because no exposure or warmth judgement can be made
+through a red cast over the picture.
+
+Strokes undo and redo one at a time, from the brush panel or with `Z` and ⇧`Z`.
+Clearing goes on the same stack, so an accidental Clear comes back. Order is
+preserved rather than reversed: an erase stroke composites out what was painted
+before it, so replaying strokes backwards would give a different mask.
 
 Crops are stored **normalized** rather than in pixels, because the same recipe
 has to render identically against a display-size preview and a full-resolution

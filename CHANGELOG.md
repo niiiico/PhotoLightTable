@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-10 - Undo and redo brush strokes one at a time, and make Clear reversible; show the red mask wash only while the brush is in hand, so the tonal sliders can be judged against the photo rather than through a colour cast.
+
 2026-08-10 - Prototype removing a window reflection from sky: fit a smooth lower envelope to the sky in linear light and subtract what does not fit, using the capture's own sky matte. Works on IMG_6112; findings and the six bugs found getting there are written up in docs/reflection-removal.md.
 
 2026-08-09 - Add a test target: 44 tests over the edit recipe's decoding and the event clustering rules, with `EventSuggester` made generic over what grouping actually reads so it can be tested without a photo library.
