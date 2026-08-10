@@ -16,6 +16,12 @@ struct BrushOverlay: View {
     /// Feathering, as a fraction of the shorter side — the same value the mask
     /// is rasterised with.
     let softness: Double
+    /// Called as a stroke begins, before any point is recorded.
+    ///
+    /// The editor needs to know this to drop the taken-back strokes and to
+    /// bring the wash back — painting is the clearest possible statement that
+    /// the extent of the mask is what is being judged.
+    var onStrokeBegan: () -> Void = {}
 
     @State private var strokeID: UUID?
     @State private var pointer: CGPoint?
@@ -132,6 +138,7 @@ struct BrushOverlay: View {
                     }
                     mask.strokes[index].points.append(point)
                 } else {
+                    onStrokeBegan()
                     var stroke = BrushStroke()
                     stroke.radius = brushRadius
                     stroke.isErase = isErasing

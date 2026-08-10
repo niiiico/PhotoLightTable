@@ -388,20 +388,20 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AA0000000000000000000160 /* Build configuration list for PBXNativeTarget "PhotoLightTableTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AA0000000000000000000170 /* Debug */,
-				AA0000000000000000000180 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		AA00000000000000000000B0 /* Build configuration list for PBXProject "PhotoLightTable" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA00000000000000000000C0 /* Debug */,
 				AA00000000000000000000D0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000160 /* Build configuration list for PBXNativeTarget "PhotoLightTableTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000170 /* Debug */,
+				AA0000000000000000000180 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

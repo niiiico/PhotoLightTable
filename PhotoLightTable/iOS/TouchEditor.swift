@@ -25,6 +25,10 @@ struct TouchEditor: View {
     @State private var selectedMaskID: UUID?
     @State private var brushRadius = BrushStroke.defaultRadius
     @State private var isErasing = false
+    @State private var brushHistory = BrushHistory()
+    /// The red wash follows what is being judged: the mask's extent while the
+    /// brush is in hand, the photograph itself once the sliders are in use.
+    @State private var showsBrushPaint = true
     @State private var isShowingBefore = false
     @State private var isPickingWhitePoint = false
     @State private var errorMessage: String?
@@ -167,8 +171,12 @@ struct TouchEditor: View {
                              imageAspect: aspect,
                              brushRadius: brushRadius,
                              isErasing: isErasing,
-                             showsPaint: true,
-                             softness: mask.softness)
+                             showsPaint: showsBrushPaint,
+                             softness: mask.softness,
+                             onStrokeBegan: {
+                                 brushHistory.beganStroke(on: mask.id)
+                                 showsBrushPaint = true
+                             })
             } else {
                 MaskOverlay(mask: maskBinding(mask.id), imageAspect: aspect)
             }
@@ -400,23 +408,51 @@ struct TouchEditor: View {
                 Text("Erase").tag(true)
             }
             .pickerStyle(.segmented)
+            // Touching any brush control is picking the brush back up.
+            .onChange(of: isErasing) { showsBrushPaint = true }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Size").font(.caption).foregroundStyle(.secondary)
                 Slider(value: $brushRadius, in: 0.01...0.3)
+                    .onChange(of: brushRadius) { showsBrushPaint = true }
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Softness").font(.caption).foregroundStyle(.secondary)
                 Slider(value: Binding(
                     get: { mask.softness },
-                    set: { value in updateMask(mask.id) { $0.softness = value } }
+                    set: { value in
+                        showsBrushPaint = true
+                        updateMask(mask.id) { $0.softness = value }
+                    }
                 ), in: 0...1)
             }
 
-            Button("Clear Strokes") { updateMask(mask.id) { $0.strokes = [] } }
-                .font(.caption)
+            HStack(spacing: 18) {
+                Button {
+                    undoStroke(on: mask.id)
+                } label: {
+                    Label("Undo Stroke", systemImage: "arrow.uturn.backward")
+                }
                 .disabled(mask.strokes.isEmpty)
+
+                Button {
+                    redoStroke(on: mask.id)
+                } label: {
+                    Label("Redo Stroke", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!brushHistory.canRedo(mask.id))
+
+                Spacer()
+
+                Button("Clear") {
+                    showsBrushPaint = true
+                    updateMask(mask.id) { brushHistory.clear(&$0.strokes, on: mask.id) }
+                }
+                .disabled(mask.strokes.isEmpty)
+            }
+            .labelStyle(.iconOnly)
+            .font(.callout)
         }
     }
 
@@ -581,6 +617,9 @@ struct TouchEditor: View {
     }
 
     private func setTone(_ adjustment: Adjustment, _ value: Double) {
+        // Adjusting tone means the photograph is what is being judged now, so
+        // the wash gets out of the way.
+        showsBrushPaint = false
         if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
             updateMask(id) { $0.tone[adjustment] = value }
         } else {
@@ -588,7 +627,20 @@ struct TouchEditor: View {
         }
     }
 
+    /// Both bring the wash back: taking a stroke away or putting it back is a
+    /// question about the mask's extent, and the answer has to be visible.
+    private func undoStroke(on id: UUID) {
+        showsBrushPaint = true
+        updateMask(id) { brushHistory.undo(&$0.strokes, on: id) }
+    }
+
+    private func redoStroke(on id: UUID) {
+        showsBrushPaint = true
+        updateMask(id) { brushHistory.redo(&$0.strokes, on: id) }
+    }
+
     private func setWhitePoint(_ value: WhitePoint?) {
+        showsBrushPaint = false
         if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
             updateMask(id) { $0.tone.whitePoint = value }
         } else {

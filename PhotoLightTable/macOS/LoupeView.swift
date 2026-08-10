@@ -35,6 +35,11 @@ struct LoupeView: View {
     @State private var splitPosition: Double = 0.5
     @State private var brushRadius: Double = BrushStroke.defaultRadius
     @State private var isErasing = false
+    @State private var brushHistory = BrushHistory()
+    /// The red wash follows what is being judged: the mask's extent while the
+    /// brush is in hand, the photograph itself once the sliders are in use.
+    /// A colour cast over the picture makes tonal decisions impossible.
+    @State private var showsBrushPaint = true
     @Environment(\.modelContext) private var modelContext
 
     private var current: PhotoItem? {
@@ -161,8 +166,12 @@ struct LoupeView: View {
                                      imageAspect: aspect,
                                      brushRadius: brushRadius,
                                      isErasing: isErasing,
-                                     showsPaint: true,
-                                     softness: selected.softness)
+                                     showsPaint: showsBrushPaint,
+                                     softness: selected.softness,
+                                     onStrokeBegan: {
+                                         brushHistory.beganStroke(on: selected.id)
+                                         showsBrushPaint = true
+                                     })
                     } else {
                         MaskOverlay(mask: maskBinding(selected.id), imageAspect: aspect)
                     }
@@ -723,6 +732,18 @@ struct LoupeView: View {
         renderForCurrentTool()
     }
 
+    /// Both bring the wash back: taking a stroke away or putting it back is a
+    /// question about the mask's extent, and the answer has to be visible.
+    private func undoStroke(on id: UUID) {
+        showsBrushPaint = true
+        updateMask(id) { brushHistory.undo(&$0.strokes, on: id) }
+    }
+
+    private func redoStroke(on id: UUID) {
+        showsBrushPaint = true
+        updateMask(id) { brushHistory.redo(&$0.strokes, on: id) }
+    }
+
     /// The sliders edit whichever tone is in focus — the whole image, or the
     /// selected mask. One set of controls, one meaning at a time.
     private var activeTone: ToneAdjustments {
@@ -730,6 +751,10 @@ struct LoupeView: View {
     }
 
     private func setTone(_ adjustment: Adjustment, _ value: Double) {
+        // Adjusting tone means the photograph is what is being judged now, so
+        // the wash gets out of the way. Picking the brush back up brings it
+        // back.
+        showsBrushPaint = false
         if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
             updateMask(id) { $0.tone[adjustment] = value }
         } else {
@@ -810,6 +835,8 @@ struct LoupeView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            // Touching any brush control is picking the brush back up.
+            .onChange(of: isErasing) { showsBrushPaint = true }
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack {
@@ -822,6 +849,7 @@ struct LoupeView: View {
                 Slider(value: $brushRadius, in: 0.01...0.3)
                     .controlSize(.small)
                     .onDoubleClick { brushRadius = BrushStroke.defaultRadius }
+                    .onChange(of: brushRadius) { showsBrushPaint = true }
                     .help("Double-click to reset")
             }
 
@@ -835,22 +863,48 @@ struct LoupeView: View {
                 }
                 Slider(value: Binding(
                     get: { mask.softness },
-                    set: { value in updateMask(id) { $0.softness = value } }
+                    set: { value in
+                        showsBrushPaint = true
+                        updateMask(id) { $0.softness = value }
+                    }
                 ), in: 0...1)
                 .controlSize(.small)
                 .onDoubleClick {
+                    showsBrushPaint = true
                     updateMask(id) { $0.softness = EditMask.defaultSoftness }
                 }
                 .help("Double-click to reset")
             }
 
-            Button("Clear Strokes") {
-                updateMask(id) { $0.strokes = [] }
+            HStack(spacing: 10) {
+                Button {
+                    undoStroke(on: id)
+                } label: {
+                    Label("Undo Stroke", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(mask.strokes.isEmpty)
+                .help("Take back the last stroke (⌘Z)")
+
+                Button {
+                    redoStroke(on: id)
+                } label: {
+                    Label("Redo Stroke", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!brushHistory.canRedo(id))
+                .help("Put it back (⇧⌘Z)")
+
+                Spacer()
+
+                Button("Clear") {
+                    showsBrushPaint = true
+                    updateMask(id) { brushHistory.clear(&$0.strokes, on: id) }
+                }
+                .disabled(mask.strokes.isEmpty)
             }
             .buttonStyle(.plain)
+            .labelStyle(.iconOnly)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .disabled(mask.strokes.isEmpty)
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
@@ -894,6 +948,7 @@ struct LoupeView: View {
     }
 
     private func setWhitePoint(_ value: WhitePoint?) {
+        showsBrushPaint = false
         if let id = selectedMaskID, edit.recipe.masks.contains(where: { $0.id == id }) {
             updateMask(id) { $0.tone.whitePoint = value }
         } else {
@@ -919,6 +974,10 @@ struct LoupeView: View {
     /// they're there.
     private func selectMask(_ id: UUID?) {
         selectedMaskID = id
+        // Picking a brush up is a statement that its extent is the question.
+        if let id, edit.recipe.masks.first(where: { $0.id == id })?.kind == .brush {
+            showsBrushPaint = true
+        }
         if id != nil {
             zoomState.reset()
             if isCropping { isCropping = false }
@@ -1160,6 +1219,19 @@ struct LoupeView: View {
 
         if character == "c", isEditing {
             setCropping(!isCropping)
+            return .handled
+        }
+
+        // Bare Z as well as ⌘Z: the rest of this view is driven by single keys,
+        // and a Command combination can be taken by the menu bar before it ever
+        // reaches here. Shift puts the stroke back.
+        if character == "z", isEditing, let id = selectedMaskID,
+           edit.recipe.masks.first(where: { $0.id == id })?.kind == .brush {
+            if press.modifiers.contains(.shift) {
+                redoStroke(on: id)
+            } else {
+                undoStroke(on: id)
+            }
             return .handled
         }
 
