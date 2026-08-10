@@ -1,11 +1,17 @@
 # Photo Light Table
 
-A macOS light table for culling photos out of the system Photos library.
-Keyboard-driven pick/reject and colour labels, browsing by date or by
-user-defined events, with picks and rejects mirrored back into real Photos albums.
+A light table for culling and editing photos in the system Photos library, on
+Mac, iPhone and iPad. Keyboard-driven pick/reject and colour labels, browsing by
+date or by user-defined events, with picks and rejects mirrored back into real
+Photos albums — and a non-destructive editor whose adjustments round-trip
+through Photos as parameters rather than as flattened pixels.
 
-Requires macOS 15+. Build with `xcodebuild -scheme PhotoLightTable build`, or open
-`PhotoLightTable.xcodeproj` in Xcode and run.
+Nothing is ever deleted, and nothing is ever flattened. Every edit stays
+revertible, in this app and in Photos.app.
+
+Requires macOS 15+ or iOS/iPadOS 18+. Open `PhotoLightTable.xcodeproj` in Xcode
+and run, or build from the command line — see [Layout](#layout) for the
+per-platform invocations.
 
 ## Keyboard
 
@@ -24,6 +30,22 @@ Requires macOS 15+. Build with `xcodebuild -scheme PhotoLightTable build`, or op
 
 `P` and `X` advance to the next photo automatically when a single photo is
 focused, so culling is a rhythm rather than press-then-arrow.
+
+### In the loupe
+
+| Key | Action |
+| --- | --- |
+| `E` | Enter the editor; again to commit and leave |
+| `C` | Crop, while editing |
+| `\` | Before/after comparison, while editing |
+| Esc | Unwind one layer: eyedropper → crop → editor (discarding) → close |
+
+While editing, the digits and the verdict keys belong to the panel's controls
+rather than to rating, so `6`–`0` don't fire underneath the editor.
+
+The decisions that shaped all this are recorded as
+[ADRs](docs/README.md), and the day-by-day history is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Why the architecture looks like this
 
@@ -215,14 +237,6 @@ The window title names the scope, so nothing repeats it. Its subtitle appears
 only when a filter is active — "Showing 12 of 120", the one count nothing else
 carries.
 
-Counts are computed **before** filtering. Computing them after would make them
-describe the filter rather than the work: filter to Picked and you'd see
-"12 picked, 0 rejected, 0 unrated", which answers nothing.
-
-Each count is a button that filters to it, and clicking the active one clears the
-filter — seeing "12 picked" and wanting to look at those twelve is the same
-thought.
-
 ## Sorting
 
 Order follows the scope, because the two read differently: an event is a story
@@ -260,10 +274,155 @@ Metadata comes from the original file via `CGImageSource`, which parses headers
 lazily and never decodes pixels. Results are cached per asset. The 35mm
 equivalent is only appended when it actually differs from the true focal length.
 
+## Editing
+
+Adjustments are **one edit session with a single save**, not an Apply between
+each operation. You enter the editor, change exposure, drop a gradient, crop,
+and it commits once — when you leave, or when you move to another photo. Moving
+away commits rather than discards, and that rule holds for every control that
+leaves a session, including choosing another version from the strip. Nothing
+should be the one button that throws work away.
+
+What is stored is a **recipe**, not a rendered image: a small `Codable` value
+holding the tone, the masks and the crop. It is encoded into `PHAdjustmentData`
+and round-tripped through Photos, so the edit reopens here as live parameters,
+shows up immediately in Photos.app, and can be reverted to the original there.
+This is the same non-destructive promise the culling side makes.
+
+| | |
+| --- | --- |
+| Tone | exposure, contrast, black point, saturation, vibrance, highlights, shadows, warmth, tint, definition, noise reduction |
+| Spatial | blur (negative sharpens, positive blurs) |
+| Masks | linear gradient, radial gradient, brush |
+| Frame | crop, white-balance eyedropper |
+
+Every adjustment is neutral at zero and runs -1…1, apart from exposure in stops
+and noise reduction which is unipolar — there is no negative amount of noise to
+remove. The UI is generated from the `Adjustment` enum rather than repeating a
+slider per parameter, so adding one is a case, not a view.
+
+Masks carry the same `ToneAdjustments` as the whole image, which is why blur
+works through a gradient for nothing. A mask's shape glows while you're changing
+it, so you can see where it reaches before letting go.
+
+Crops are stored **normalized** rather than in pixels, because the same recipe
+has to render identically against a display-size preview and a full-resolution
+commit. Core Image's origin is bottom-left, so the flip happens once, at the
+point of application.
+
+### Recipes decode leniently
+
+Every field of a recipe falls back on its own. A mask written before brushes
+existed carries no `strokes` or `softness`; synthesised decoding requires every
+key, and `decodeIfPresent` throws on a key that is present but malformed. So one
+unparseable mask would take the exposure and the crop down with it — and a photo
+whose recipe fails to decode is indistinguishable from one that was never
+edited. Losing the masks is bad; losing everything as collateral is much worse.
+
+The session carries a `formatVersion` and a set of readable ones, so old edits
+keep opening as parameters after the shape of the recipe changes.
+
+### Copy and paste
+
+Right-click a photo in the grid to copy its adjustments, then paste onto a
+selection. The recipe is read from the photo's **actual adjustment data** rather
+than from this app's history, so it reflects what the photo currently carries
+even if it was reverted or re-edited elsewhere.
+
+### History
+
+Every commit is recorded, so you can revert to any earlier state rather than
+undoing one step at a time.
+
+## Variants
+
+A treatment can be saved as **a new photo alongside the original** — a B&W next
+to the colour, a tight crop next to the full frame.
+
+The duplicate is built from the **original pixels with the recipe applied as an
+ordinary edit**, not written out as a flattened render. That costs one extra
+step and buys everything: the variant is non-destructive like any other edit,
+reverts to the original in Photos, and reopens here with its adjustments intact.
+A flattened export would be a dead end.
+
+Saving alongside also **puts the original back** to how the session found it.
+Without that the treatment stayed applied to the source, so the next save — or
+simply arrowing to the next photo, which commits — quietly changed the original
+too. Leaving the original alone is the entire point of the feature.
+
+### Families
+
+Photos made from the same pixels are kept together. A variant copies its
+source's creation date and location so it sorts into the same day, and the grid
+then emits a source with its variants following it. The parent link is followed
+**to the end rather than one step**, so a variant of a variant belongs to the
+family that shares the pixels rather than to whichever photo it happened to be
+made from.
+
+A variant whose source is filtered out stays where it fell — hiding it because
+its parent is hidden would be a second, invisible filter.
+
+While editing, the family shows as a row of named versions with the open one
+marked. Photos treats a duplicate as an unrelated asset, so without this the
+relationship would only be a badge in the grid; it belongs in the editor because
+that is where the question arises — what else exists of this frame, and is the
+treatment I'm making already one of them.
+
+Names are suggested from the recipe itself, so a duplicate arrives described —
+"B&W", "Muted", "Warm", "Cool", "Punchy", "Crop" — rather than as "Copy".
+
+### Splitting
+
+A photo can be split into left and right halves: two new photos from one, on the
+same path as any other variant, each a real photo made from the original pixels
+with a crop applied. Both can be re-cropped, adjusted or reverted afterwards; a
+pair of flattened exports could do none of that. Two scanned pages on one frame
+become two pages without losing the sheet they came from.
+
+The halves divide **whatever is currently framed** rather than the whole file, so
+splitting after a crop divides what is actually visible. It is reachable from
+the editor on both platforms, where the session's adjustments carry into both
+halves, and from the grid's context menu on the Mac, where there is no session
+to take a recipe from and the photo is split as it stands.
+
+## On iPhone and iPad
+
+The touch app is **a separate design, not a reflow of the Mac one**. The Mac app
+is driven by a hardware keyboard and a pointer; on a phone a verdict is a swipe
+and the photo has to stay reachable with a thumb. The use case it was built for
+is culling on the couch, sharing the same store over iCloud.
+
+Events run down the side in a `NavigationSplitView`, the grid sits beside them,
+and the loupe is a full-screen cover. Culling is a swipe.
+
+The editor is shared: the overlays in `Shared/Editing/` — crop, masks, brush,
+zoom, the versions strip — compile for both platforms, so the same code drives
+the iPad editor and the Mac one.
+
+Comparison is the exception. The Mac shows before and after side by side; on
+touch you **hold the photo to see the original**, which needs no screen space and
+no button.
+
+## Reading the state back out of Photos
+
+The LightTable albums are the durable record — they survive this app's store
+being lost, moved, or set up fresh on another device. So the app can read the
+folder back out of Photos and rebuild events, picks and rejects from it. That is
+both the recovery path and how a new install adopts work already done.
+
+This is deliberately a **rebuild from the library rather than a reconciliation
+between two peers**. Photos is the real library; this app's store is a projection
+of it plus the data PhotoKit cannot hold. Keeping two stores in step as equals
+was modelling the relationship wrong, and every mechanism that did so added
+state that could itself go stale.
+
 ## Current scope
 
-Non-destructive: nothing is ever deleted from the library. Rejects are marked and
-collected into the Rejected album; emptying it is a manual decision in Photos.
+Non-destructive, in both senses. Nothing is ever deleted from the library:
+rejects are marked and collected into the Rejected album, and emptying it is a
+manual decision in Photos. Nothing is ever flattened either: edits are stored as
+parameters and can be reverted to the original, here or in Photos.app, however
+many variants have been made from them.
 
 Rows are only created for rated assets, so the store stays proportional to work
 done rather than to library size.
@@ -281,12 +440,26 @@ PhotoLightTable/
     Platform.swift           PlatformImage, screen scale, settings URL
     Models/                  Rating, PersistentModels, RatingStore, EventMembership
     Photos/                  PhotoLibraryService, ThumbnailLoader, AlbumSyncer,
-                             EventSuggester, PhotoMetadata
-    Views/                   AppModel, ThumbnailCell, Tally, FlowLayout, Preferences
+                             EventSuggester, PhotoMetadata, PhotoEditing,
+                             PhotoVariants, EditClipboard, PhotosImport
+    Editing/                 CropOverlay, MaskOverlay, BrushOverlay, LoupeZoom,
+                             ComparisonView, WhitePointPicker, VersionsStrip,
+                             CropBoundsIndicator
+    Views/                   AppModel, LibraryProjection, ThumbnailCell, Tally,
+                             FlowLayout, Preferences, BuildStamp
   macOS/                     ContentView, SidebarView, LightTableView, LoupeView,
-                             EventEditor, SettingsView, entitlements
-  iOS/                       TouchRootView
+                             EventEditor, SettingsView, DoubleClickCatcher,
+                             entitlements
+  iOS/                       TouchRootView, TouchGrid, TouchLoupe, TouchEditor
 ```
+
+`Shared/Photos/PhotoEditing.swift` and `macOS/LoupeView.swift` are the two large
+files (~1200 lines each): the first holds the whole recipe model and the render
+and commit paths, the second the loupe and the Mac editor built around it.
+
+`Shared/Editing/` is where the editor's overlays live, and it is the reason the
+iPad got a real editor rather than a cut-down one — everything in it draws with
+SwiftUI over a photo and works the same under a finger or a pointer.
 
 Everything under `Shared/` compiles for both platforms and contains no AppKit or
 UIKit types directly — `PlatformImage` and the `Platform` helpers absorb the
