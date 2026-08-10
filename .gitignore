@@ -21,3 +21,6 @@ DerivedData/
 .build/
 Packages/
 
+
+# Scratch: debug scripts and their renders, per the working convention
+tmp/
