@@ -6,14 +6,30 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		AA0000000000000000000140 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA00000000000000000000A0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000060;
+			remoteInfo = PhotoLightTable;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		AA0000000000000000000020 /* PhotoLightTable.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoLightTable.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000110 /* PhotoLightTableTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoLightTableTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000010 /* PhotoLightTable */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PhotoLightTable;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000100 /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +49,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000010 /* PhotoLightTable */,
+				AA0000000000000000000100 /* Tests */,
 				AA0000000000000000000050 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000020 /* PhotoLightTable.app */,
+				AA0000000000000000000110 /* PhotoLightTableTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,6 +87,25 @@
 			productReference = AA0000000000000000000020 /* PhotoLightTable.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000000000000000000120 /* PhotoLightTableTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000160 /* Build configuration list for PBXNativeTarget "PhotoLightTableTests" */;
+			buildPhases = (
+				AA0000000000000000000130 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA0000000000000000000150 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000100 /* Tests */,
+			);
+			name = PhotoLightTableTests;
+			productName = PhotoLightTableTests;
+			productReference = AA0000000000000000000110 /* PhotoLightTableTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -81,6 +118,10 @@
 				TargetAttributes = {
 					AA0000000000000000000060 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					AA0000000000000000000120 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = AA0000000000000000000060;
 					};
 				};
 			};
@@ -99,6 +140,7 @@
 			projectRoot = "";
 			targets = (
 				AA0000000000000000000060 /* PhotoLightTable */,
+				AA0000000000000000000120 /* PhotoLightTableTests */,
 			);
 		};
 /* End PBXProject section */
@@ -143,7 +185,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000130 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA0000000000000000000150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000060 /* PhotoLightTable */;
+			targetProxy = AA0000000000000000000140 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA00000000000000000000C0 /* Debug */ = {
@@ -271,6 +328,54 @@
 			};
 			name = Release;
 		};
+		AA0000000000000000000170 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PU9QJY3H6Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = PhotosLightTableTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
+				"TEST_HOST[sdk=iphoneos*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/PhotoLightTable";
+				"TEST_HOST[sdk=iphonesimulator*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/PhotoLightTable";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/Contents/MacOS/PhotoLightTable";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000180 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PU9QJY3H6Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = PhotosLightTableTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
+				"TEST_HOST[sdk=iphoneos*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/PhotoLightTable";
+				"TEST_HOST[sdk=iphonesimulator*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/PhotoLightTable";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/PhotoLightTable.app/Contents/MacOS/PhotoLightTable";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -279,6 +384,15 @@
 			buildConfigurations = (
 				AA00000000000000000000E0 /* Debug */,
 				AA00000000000000000000F0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000160 /* Build configuration list for PBXNativeTarget "PhotoLightTableTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000170 /* Debug */,
+				AA0000000000000000000180 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

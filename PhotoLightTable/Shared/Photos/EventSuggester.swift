@@ -50,6 +50,21 @@ enum ClusterGranularity: String, CaseIterable, Identifiable {
     }
 }
 
+/// The part of a photo that clustering actually looks at.
+///
+/// Grouping is a question about clocks and places, so it is expressed over the
+/// two fields that answer it rather than over `PhotoItem`. That keeps the rules
+/// exercisable without a `PHAsset` behind every item — there is no way to make
+/// a `PHAsset` with a chosen date, so a concrete parameter would make the whole
+/// of this file reachable only against a real photo library.
+protocol TemporalPhoto: Identifiable where ID == String {
+    var id: String { get }
+    var creationDate: Date? { get }
+    var location: CLLocation? { get }
+}
+
+extension PhotoItem: TemporalPhoto {}
+
 enum EventSuggester {
     /// Photos taken more than this far apart are treated as a different place
     /// even when they're close in time — a flight or a drive splits the group.
@@ -58,15 +73,15 @@ enum EventSuggester {
     /// Splits photos into runs of temporally (and geographically) adjacent shots.
     /// Input order doesn't matter; output is oldest group first, each group
     /// sorted oldest first.
-    static func clusters(in items: [PhotoItem],
-                         granularity: ClusterGranularity) -> [[PhotoItem]] {
+    static func clusters<Item: TemporalPhoto>(in items: [Item],
+                                              granularity: ClusterGranularity) -> [[Item]] {
         let dated = items
             .filter { $0.creationDate != nil }
             .sorted { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) }
         guard !dated.isEmpty else { return [] }
 
-        var groups: [[PhotoItem]] = []
-        var current: [PhotoItem] = [dated[0]]
+        var groups: [[Item]] = []
+        var current: [Item] = [dated[0]]
 
         for item in dated.dropFirst() {
             if shouldSplit(previous: current[current.count - 1],
@@ -82,9 +97,9 @@ enum EventSuggester {
         return groups
     }
 
-    private static func shouldSplit(previous: PhotoItem,
-                                    next: PhotoItem,
-                                    granularity: ClusterGranularity) -> Bool {
+    private static func shouldSplit<Item: TemporalPhoto>(previous: Item,
+                                                         next: Item,
+                                                         granularity: ClusterGranularity) -> Bool {
         guard let previousDate = previous.creationDate,
               let nextDate = next.creationDate else { return false }
 
@@ -102,9 +117,9 @@ enum EventSuggester {
     /// Grows a set of seed photos outward to every photo in the same group(s).
     /// Seeds spanning two groups pull in both, which is what the user means when
     /// they select across a boundary they disagree with.
-    static func related(to seedIDs: some Collection<String>,
-                        in items: [PhotoItem],
-                        granularity: ClusterGranularity) -> [PhotoItem] {
+    static func related<Item: TemporalPhoto>(to seedIDs: some Collection<String>,
+                                             in items: [Item],
+                                             granularity: ClusterGranularity) -> [Item] {
         guard !seedIDs.isEmpty else { return [] }
         let seeds = Set(seedIDs)
         let matching = clusters(in: items, granularity: granularity)
@@ -113,7 +128,7 @@ enum EventSuggester {
     }
 
     /// Inclusive day-granularity bounds covering `items`.
-    static func dateRange(of items: [PhotoItem]) -> (start: Date, end: Date)? {
+    static func dateRange<Item: TemporalPhoto>(of items: [Item]) -> (start: Date, end: Date)? {
         let dates = items.compactMap(\.creationDate).sorted()
         guard let first = dates.first, let last = dates.last else { return nil }
         return (first, last)
