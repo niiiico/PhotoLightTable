@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import PhotoLightTable
+@testable import LightTable
 
 /// The recipe is the only thing that survives a round trip through Photos, and
 /// a recipe that fails to decode is indistinguishable from a photo that was

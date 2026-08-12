@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AA0000000000000000000060"
-               BuildableName = "PhotoLightTable.app"
-               BlueprintName = "PhotoLightTable"
-               ReferencedContainer = "container:PhotoLightTable.xcodeproj">
+               BuildableName = "LightTable.app"
+               BlueprintName = "LightTable"
+               ReferencedContainer = "container:LightTable.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AA0000000000000000000120"
-               BuildableName = "PhotoLightTableTests.xctest"
-               BlueprintName = "PhotoLightTableTests"
-               ReferencedContainer = "container:PhotoLightTable.xcodeproj">
+               BuildableName = "LightTableTests.xctest"
+               BlueprintName = "LightTableTests"
+               ReferencedContainer = "container:LightTable.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000060"
-            BuildableName = "PhotoLightTable.app"
-            BlueprintName = "PhotoLightTable"
-            ReferencedContainer = "container:PhotoLightTable.xcodeproj">
+            BuildableName = "LightTable.app"
+            BlueprintName = "LightTable"
+            ReferencedContainer = "container:LightTable.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000060"
-            BuildableName = "PhotoLightTable.app"
-            BlueprintName = "PhotoLightTable"
-            ReferencedContainer = "container:PhotoLightTable.xcodeproj">
+            BuildableName = "LightTable.app"
+            BlueprintName = "LightTable"
+            ReferencedContainer = "container:LightTable.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

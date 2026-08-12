@@ -103,5 +103,5 @@ extension AlbumSyncer {
 }
 
 extension Notification.Name {
-    static let rebuildFromPhotos = Notification.Name("PhotoLightTable.rebuildFromPhotos")
+    static let rebuildFromPhotos = Notification.Name("LightTable.rebuildFromPhotos")
 }

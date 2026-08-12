@@ -305,7 +305,7 @@ final class RatingStore: ObservableObject {
         } catch {
             // A failed save must not take the UI down; in-memory state is still
             // correct and the next mutation retries.
-            NSLog("PhotoLightTable: failed to save ratings — \(error)")
+            NSLog("LightTable: failed to save ratings — \(error)")
         }
     }
 

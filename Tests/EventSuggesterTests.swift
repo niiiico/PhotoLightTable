@@ -2,7 +2,7 @@ import CoreLocation
 import Foundation
 import Testing
 
-@testable import PhotoLightTable
+@testable import LightTable
 
 /// A photo reduced to what clustering looks at, so the grouping rules can be
 /// exercised with chosen dates and places. `PHAsset` cannot be constructed with

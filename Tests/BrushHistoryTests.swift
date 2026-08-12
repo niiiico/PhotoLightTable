@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import PhotoLightTable
+@testable import LightTable
 
 private func stroke(_ x: Double) -> BrushStroke {
     var stroke = BrushStroke()

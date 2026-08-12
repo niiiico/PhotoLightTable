@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 @main
-struct PhotoLightTableApp: App {
+struct LightTableApp: App {
     private let container: ModelContainer
     @StateObject private var library: PhotoLibraryService
     @StateObject private var app = AppModel()

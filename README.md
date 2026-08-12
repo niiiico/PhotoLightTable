@@ -1,4 +1,4 @@
-# Photo Light Table
+# LightTable
 
 A light table for culling and editing photos in the system Photos library, on
 Mac, iPhone and iPad. Keyboard-driven pick/reject and colour labels, browsing by
@@ -9,7 +9,7 @@ through Photos as parameters rather than as flattened pixels.
 Nothing is ever deleted, and nothing is ever flattened. Every edit stays
 revertible, in this app and in Photos.app.
 
-Requires macOS 15+ or iOS/iPadOS 18+. Open `PhotoLightTable.xcodeproj` in Xcode
+Requires macOS 15+ or iOS/iPadOS 18+. Open `LightTable.xcodeproj` in Xcode
 and run, or build from the command line — see [Layout](#layout) for the
 per-platform invocations.
 
@@ -446,8 +446,8 @@ than separate targets sharing a framework. A single target keeps the project fil
 simple, and platform differences are small enough to express in source.
 
 ```
-PhotoLightTable/
-  PhotoLightTableApp.swift   picks the root view per platform
+LightTable/
+  LightTableApp.swift   picks the root view per platform
   Shared/
     Platform.swift           PlatformImage, screen scale, settings URL
     Models/                  Rating, PersistentModels, RatingStore, EventMembership
@@ -484,11 +484,11 @@ shared; only the Settings *UI* is macOS-specific, since iOS has no `Settings`
 scene.
 
 The Xcode project uses synchronized file groups (Xcode 16+), so new files under
-`PhotoLightTable/` are picked up without editing `project.pbxproj`.
+`LightTable/` are picked up without editing `project.pbxproj`.
 
 Build either platform:
 
 ```
-xcodebuild -scheme PhotoLightTable -destination 'platform=macOS' build
-xcodebuild -scheme PhotoLightTable -destination 'platform=iOS Simulator,name=iPad (A16)' build
+xcodebuild -scheme LightTable -destination 'platform=macOS' build
+xcodebuild -scheme LightTable -destination 'platform=iOS Simulator,name=iPad (A16)' build
 ```

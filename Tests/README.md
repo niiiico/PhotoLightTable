@@ -3,7 +3,7 @@
 Unit tests for the parts of the app that are decidable without a photo library.
 
 ```
-xcodebuild test -scheme PhotoLightTable -destination 'platform=macOS'
+xcodebuild test -scheme LightTable -destination 'platform=macOS'
 ```
 
 Written with [Swift Testing](https://developer.apple.com/documentation/testing)
