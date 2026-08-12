@@ -1,0 +1,9 @@
+# Release settings for otactl. See ~/Repositories/ota.
+app = "lighttable"
+scheme = "LightTable"
+platforms = ["ios", "macos"]
+
+[macos]
+# Made once with: xcrun notarytool store-credentials notary
+# Without it Gatekeeper quarantines the download on any machine but this one.
+notarize_profile = "notary"
