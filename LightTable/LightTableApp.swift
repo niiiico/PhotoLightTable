@@ -9,6 +9,10 @@ struct LightTableApp: App {
     @StateObject private var syncer: AlbumSyncer
     @StateObject private var ratings: RatingStore
     @StateObject private var clipboard: EditClipboard
+    #if os(macOS)
+    // Sparkle's controller has to outlive the scene, so it is owned here.
+    @StateObject private var updater = Updater()
+    #endif
     @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
 
     init() {
@@ -58,6 +62,9 @@ struct LightTableApp: App {
         #if os(macOS)
         .defaultSize(width: 1280, height: 820)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand(updater: updater)
+            }
             CommandGroup(after: .toolbar) {
                 Toggle("Sync Picks to Photos Albums", isOn: $syncer.isEnabled)
                 Button("Sync Now") { ratings.syncNow() }

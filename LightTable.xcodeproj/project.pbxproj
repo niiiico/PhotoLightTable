@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA00000000000000000001C0 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = AA00000000000000000001B0 /* Sparkle */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		AA0000000000000000000140 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA00000000000000000001C0 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +88,9 @@
 				AA0000000000000000000010 /* LightTable */,
 			);
 			name = LightTable;
+			packageProductDependencies = (
+				AA00000000000000000001B0 /* Sparkle */,
+			);
 			productName = LightTable;
 			productReference = AA0000000000000000000020 /* LightTable.app */;
 			productType = "com.apple.product-type.application";
@@ -134,6 +142,9 @@
 			);
 			mainGroup = AA0000000000000000000040;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AA00000000000000000001A0 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000050 /* Products */;
 			projectDirPath = "";
@@ -173,7 +184,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# Derived from the commit count rather than a local tally: the same commit\n# yields the same number on every machine, and history only grows, so it is\n# monotonic without any state to keep in step.\ncd \"$SRCROOT\"\n\nif git rev-parse --git-dir > /dev/null 2>&1; then\n  COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)\n  COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\n  # A build from a modified tree is not the commit it claims to be, so it is\n  # marked rather than being indistinguishable from a clean one.\n  if git diff --quiet HEAD 2>/dev/null; then MARK=\"\"; else MARK=\"+\"; fi\nelse\n  COUNT=0\n  COMMIT=\"unknown\"\n  MARK=\"\"\nfi\n\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  # CFBundleVersion has to stay purely numeric; the marker and the hash go in\n  # keys of our own.\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildLabel ${COUNT}${MARK}\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildLabel string ${COUNT}${MARK}\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildCommit $COMMIT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildCommit string $COMMIT\" \"$PLIST\"\nfi\n";
+			shellScript = "set -e\n# Derived from the commit count rather than a local tally: the same commit\n# yields the same number on every machine, and history only grows, so it is\n# monotonic without any state to keep in step.\ncd \"$SRCROOT\"\n\nif git rev-parse --git-dir > /dev/null 2>&1; then\n  COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)\n  COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\n  # A build from a modified tree is not the commit it claims to be, so it is\n  # marked rather than being indistinguishable from a clean one.\n  if git diff --quiet HEAD 2>/dev/null; then MARK=\"\"; else MARK=\"+\"; fi\nelse\n  COUNT=0\n  COMMIT=\"unknown\"\n  MARK=\"\"\nfi\n\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  # CFBundleVersion has to stay purely numeric; the marker and the hash go in\n  # keys of our own.\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildLabel ${COUNT}${MARK}\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildLabel string ${COUNT}${MARK}\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildCommit $COMMIT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildCommit string $COMMIT\" \"$PLIST\"\nfi\n\n# Sparkle reads these four from the bundle. They are static rather than\n# derived, but they are written here so the project keeps a generated\n# Info.plist rather than gaining a checked-in one for four keys. macOS\n# only: there is no Sparkle on iOS.\nif [ \"$PLATFORM_NAME\" = \"macosx\" ] && [ -f \"$PLIST\" ]; then\n  set_plist() {\n    /usr/libexec/PlistBuddy -c \"Set :$1 $2\" \"$PLIST\" 2>/dev/null \\\n      || /usr/libexec/PlistBuddy -c \"Add :$1 $3 $2\" \"$PLIST\"\n  }\n  set_plist SUFeedURL https://ota.int.dev2.net/lighttable/macos/appcast.xml string\n  set_plist SUPublicEDKey kpzX3tcBAA972oWw0uUANOBbMDtr4+/y0IU6OtzP388= string\n  set_plist SUEnableAutomaticChecks true bool\n  set_plist SUAutomaticallyUpdate true bool\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -407,6 +418,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA00000000000000000001A0 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA00000000000000000001B0 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA00000000000000000001A0 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AA00000000000000000000A0 /* Project object */;
 }
