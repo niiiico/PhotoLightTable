@@ -16,6 +16,8 @@ Routine choices are not here; the code comments carry those, and the
 | [004](adr-004-photos-albums-as-durable-record.md) | The Photos albums are the durable record; rebuild rather than reconcile | 2026-07-30 |
 | [005](adr-005-edits-as-recipes.md) | Edits are recipes round-tripped through Photos, committed once per session | 2026-08-02 |
 | [006](adr-006-variants-not-exports.md) | A variant is a real photo from the original pixels, not an export | 2026-08-04 |
+| [007](adr-007-product-name-and-bundle-identity.md) | The app is called LightTable | 2026-08-11 |
+| [008](adr-008-shipping-updates.md) | Shipping updates: Sparkle on the Mac, a prompt on iOS, and no sandbox | 2026-08-11 |
 
 ## Notes
 
@@ -39,3 +41,12 @@ macOS 26.5 SDK rather than by assumption, after a design built on creating smart
 albums programmatically turned out to rest on an API that does not exist. That
 SDK is an `.Internal.sdk`, so SPI is visible alongside public API; the
 annotation is what matters, not whether the symbol is there.
+
+007 and 008 come from outside that thread — they are about getting builds onto
+devices rather than about the library — but 007 leans on 004 all the same. The
+rename discards the app's local store, and the only reason that is affordable is
+that the Photos albums can rebuild it.
+
+The distribution decision itself lives with the service, in
+[ota ADR 001](../../ota/docs/adr-001-ota-distribution.md), because it covers
+every app built here rather than this one.

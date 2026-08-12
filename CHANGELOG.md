@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-11 - Design over-the-air distribution to my own devices, and record it: ADR 007 renames the app to LightTable and moves it to `net.dev2.lighttable`, ADR 008 drops the macOS sandbox for Sparkle and adds an update prompt on iOS, and ADR 003 is amended — the account blocks App Store Connect, not provisioning, so Ad Hoc distribution was available all along.
+
 2026-08-10 - Undo and redo brush strokes one at a time, and make Clear reversible; show the red mask wash only while the brush is in hand, so the tonal sliders can be judged against the photo rather than through a colour cast.
 
 2026-08-10 - Prototype removing a window reflection from sky: fit a smooth lower envelope to the sky in linear light and subtract what does not fit, using the capture's own sky matte. Works on IMG_6112; findings and the six bugs found getting there are written up in docs/reflection-removal.md.
