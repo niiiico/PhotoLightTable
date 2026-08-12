@@ -81,11 +81,12 @@ abstraction pretending the two are the same.
   contained no longer is. Accepted because it runs only on my own devices from
   artifacts I sign — but it is a downgrade, and worth revisiting if the app is
   ever handed to anyone else.
-- Photos access should be unaffected: on macOS it is governed by TCC and
-  `NSPhotoLibraryUsageDescription`, and
-  `com.apple.security.personal-information.photos-library` is a *sandbox*
-  entitlement that simply stops applying. **This needs verifying on a clean
-  first run**, because a TCC regression here breaks the entire app.
+- Photos access is unaffected. On macOS it is governed by TCC and
+  `NSPhotoLibraryUsageDescription`, and the sandbox stops applying without
+  taking the entitlement with it — `personal-information.photos-library` is
+  read by Hardened Runtime too, which is why it was kept rather than deleted
+  with the rest. **Verified 2026-08-12** by running the unsandboxed build; the
+  library is reachable.
 - Notarization adds a round trip to `notarytool` — a minute or two — to every
   macOS release, and the machine must be online to cut one.
 - The release tool must **refuse to publish a dirty tree**. `BuildStamp` marks
