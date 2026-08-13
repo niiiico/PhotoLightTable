@@ -49,6 +49,7 @@ struct ContentView: View {
                     } else {
                         LightTableView(items: visibleItems,
                                        sections: projection.sections,
+                                       stackSizes: projection.stackSizes,
                                        events: events,
                                        onNewEvent: { editorMode = .create(seedIDs: $0) })
                     }

@@ -9,6 +9,8 @@ import SwiftUI
 struct TouchGrid: View {
     let items: [PhotoItem]
     let sections: [DaySection]
+    /// How many photos each stack stands for, keyed by the one showing.
+    let stackSizes: [String: Int]
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
@@ -58,7 +60,10 @@ struct TouchGrid: View {
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: isSelecting && app.selectedIDs.contains(item.id),
                       imageVersion: loader.version(of: item.id),
-                      variantLabel: ratings.variantLabel(for: item.id))
+                      variantLabel: ratings.variantLabel(for: item.id),
+                      stackCount: stackSizes[item.id] ?? 0,
+                      isStackExpanded: app.expandedStacks.contains(item.id),
+                      onToggleStack: { app.toggleStack(item.id) })
         .equatable()
         .onTapGesture {
             if isSelecting {

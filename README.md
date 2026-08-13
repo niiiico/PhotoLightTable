@@ -22,6 +22,7 @@ per-platform invocations.
 | `U` | Clear rating |
 | `6` `7` `8` `9` `0` | Red / Yellow / Green / Blue / Purple label |
 | `R` | Select related photos (again to widen) |
+| `S` | Open or stack the focused photo's versions |
 | arrows | Move between photos |
 | ⇧ + arrows | Extend selection |
 | Space / Return | Open or close the loupe |
@@ -365,14 +366,32 @@ too. Leaving the original alone is the entire point of the feature.
 ### Families
 
 Photos made from the same pixels are kept together. A variant copies its
-source's creation date and location so it sorts into the same day, and the grid
-then emits a source with its variants following it. The parent link is followed
-**to the end rather than one step**, so a variant of a variant belongs to the
-family that shares the pixels rather than to whichever photo it happened to be
-made from.
+source's creation date and location so it sorts into the same day. The parent
+link is followed **to the end rather than one step**, so a variant of a variant
+belongs to the family that shares the pixels rather than to whichever photo it
+happened to be made from.
 
-A variant whose source is filtered out stays where it fell — hiding it because
-its parent is hidden would be a second, invisible filter.
+In the grid a family draws as a **stack**: one cell, with two cards peeking out
+behind it and a count. A frame is one thing on the table, and its alternative
+treatments are that same thing seen another way — spreading them side by side
+made a good take look like a long one, and made the day's real shape harder to
+read the more you worked.
+
+The count is the control. Click it, press `S`, or use the context menu to open
+the family out in place; the same again stacks it back. Nothing is hidden
+permanently and nothing is deleted — a closed stack is a way of looking, not a
+filter. Open stacks are remembered for the session only.
+
+`S` acts on the focused cell alone rather than the selection, since opening
+every stack in a wide selection would rearrange the grid under the cursor.
+
+Verdicts still apply to what is *selected*, which for a closed stack is the one
+photo standing for it. Rejecting a stack does not reject the versions inside it:
+a hidden mass edit is worse than an extra keystroke.
+
+A variant whose source is filtered out stays where it fell rather than vanishing
+with it — hiding a photo because its parent is hidden would be a second,
+invisible filter. Such an orphan is an ordinary cell, not a stack of one.
 
 While editing, the family shows as a row of named versions with the open one
 marked. Photos treats a duplicate as an unrelated asset, so without this the

@@ -7,6 +7,8 @@ import SwiftUI
 struct LightTableView: View {
     let items: [PhotoItem]
     let sections: [DaySection]
+    /// How many photos each stack stands for, keyed by the one showing.
+    let stackSizes: [String: Int]
     let events: [LightTableEvent]
     /// Opens the event editor seeded with the given photos.
     let onNewEvent: ([String]) -> Void
@@ -226,7 +228,10 @@ struct LightTableView: View {
                       showsSelectionBadge: app.selectedIDs.count > 1
                           && app.selectedIDs.contains(item.id),
                       imageVersion: loader.version(of: item.id),
-                      variantLabel: ratings.variantLabel(for: item.id))
+                      variantLabel: ratings.variantLabel(for: item.id),
+                      stackCount: stackSizes[item.id] ?? 0,
+                      isStackExpanded: app.expandedStacks.contains(item.id),
+                      onToggleStack: { app.toggleStack(item.id) })
             .equatable()
             .id(item.id)
             .background(
@@ -281,6 +286,14 @@ struct LightTableView: View {
         }
         if let current = currentEvent {
             Button("Remove from “\(current.name)”") { remove(targets, from: current) }
+        }
+        if let count = stackSizes[item.id] {
+            Divider()
+            Button(app.expandedStacks.contains(item.id)
+                   ? "Stack These \(count) Versions  (S)"
+                   : "Show All \(count) Versions  (S)") {
+                app.toggleStack(item.id)
+            }
         }
         Divider()
         Button("Split into Left and Right") { splitLeftRight(item) }
@@ -387,6 +400,12 @@ struct LightTableView: View {
             return .handled
         case "u":
             ratings.clear(targets)
+            return .handled
+        case "s":
+            // Only the focused cell: opening every stack in a wide selection
+            // would rearrange the grid under the cursor.
+            guard let focusID = app.focusID, stackSizes[focusID] != nil else { return .ignored }
+            app.toggleStack(focusID)
             return .handled
         case "r":
             app.selectRelated(in: items)

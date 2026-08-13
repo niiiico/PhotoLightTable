@@ -117,7 +117,9 @@ struct TouchRootView: View {
                 if library.isLoading && library.items.isEmpty {
                     ProgressView("Loading library…")
                 } else {
-                    TouchGrid(items: projection.visible, sections: projection.sections)
+                    TouchGrid(items: projection.visible,
+                              sections: projection.sections,
+                              stackSizes: projection.stackSizes)
                 }
             }
         }

@@ -15,6 +15,16 @@ struct ThumbnailCell: View, Equatable {
     let imageVersion: Int
     /// Non-nil when this photo is an alternative treatment of another.
     var variantLabel: String? = nil
+    /// How many photos share this one's pixels, counting itself. Anything above
+    /// one draws as a stack; zero and one are the ordinary case.
+    var stackCount: Int = 0
+    /// Whether the family this photo stands for is opened out in the grid. An
+    /// open stack keeps its badge — that is what closes it again — but drops
+    /// the pile, since the other photos are on the table beside it.
+    var isStackExpanded: Bool = false
+    var onToggleStack: (() -> Void)? = nil
+
+    private var isStack: Bool { stackCount > 1 }
 
     @State private var image: PlatformImage?
     @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
@@ -30,13 +40,35 @@ struct ThumbnailCell: View, Equatable {
     /// way a border drawn over a busy photo never is.
     private var matInset: CGFloat { isActive ? 6 : 0 }
 
+    /// A closed stack shows two cards peeking out behind the photo, offset down
+    /// and right. An open one drops them: its members are on the table beside
+    /// it, so a pile behind the first would be claiming them twice.
+    private var showsPile: Bool { isStack && !isStackExpanded }
+
+    /// Scaled with the cell, so the pile still reads at a small thumbnail size
+    /// without swallowing a large one.
+    private var pileOffset: CGFloat { showsPile ? max(3, min(7, size * 0.038)) : 0 }
+
+    /// The photo gives up room for the pile rather than overflowing the cell,
+    /// which would otherwise collide with its neighbours in the grid.
+    private var contentSize: CGFloat { size - matInset * 2 - pileOffset * 2 }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
                 .fill(matColor)
 
-            photo
-                .padding(matInset)
+            ZStack {
+                if showsPile {
+                    pileCard(shift: pileOffset, opacity: 0.22)
+                    pileCard(shift: 0, opacity: 0.4)
+                }
+
+                photo
+                    .frame(width: contentSize, height: contentSize)
+                    .offset(x: -pileOffset, y: -pileOffset)
+            }
+            .padding(matInset)
         }
         .frame(width: size, height: size)
         .overlay {
@@ -57,6 +89,42 @@ struct ThumbnailCell: View, Equatable {
         }
     }
 
+    // MARK: - Stack
+
+    private func pileCard(shift: CGFloat, opacity: Double) -> some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.white.opacity(opacity))
+            .overlay {
+                RoundedRectangle(cornerRadius: 3)
+                    .strokeBorder(.black.opacity(0.25), lineWidth: 0.5)
+            }
+            .frame(width: contentSize, height: contentSize)
+            .offset(x: shift, y: shift)
+    }
+
+    /// The count is the control: there is nowhere else to put a disclosure that
+    /// would not be another thing drawn over the photograph.
+    private var stackBadge: some View {
+        Button {
+            onToggleStack?()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: isStackExpanded ? "rectangle.stack.fill" : "rectangle.stack")
+                Text("\(stackCount)")
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(6)
+        .help(isStackExpanded
+              ? "Stack these versions back together"
+              : "Show all \(stackCount) versions of this photo")
+    }
+
     // MARK: - Photo
 
     private var photo: some View {
@@ -68,7 +136,7 @@ struct ThumbnailCell: View, Equatable {
                 Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: fillMode.swiftUIContentMode)
-                    .frame(width: size - matInset * 2, height: size - matInset * 2)
+                    .frame(width: contentSize, height: contentSize)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
             } else {
                 ProgressView()
@@ -131,9 +199,10 @@ struct ThumbnailCell: View, Equatable {
             }
 
             Spacer()
-            if showsSelectionBadge {
-                HStack {
-                    Spacer()
+            HStack {
+                if isStack { stackBadge }
+                Spacer()
+                if showsSelectionBadge {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white, Color.accentColor)
@@ -178,5 +247,7 @@ struct ThumbnailCell: View, Equatable {
             && lhs.showsSelectionBadge == rhs.showsSelectionBadge
             && lhs.imageVersion == rhs.imageVersion
             && lhs.variantLabel == rhs.variantLabel
+            && lhs.stackCount == rhs.stackCount
+            && lhs.isStackExpanded == rhs.isStackExpanded
     }
 }

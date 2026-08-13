@@ -84,6 +84,22 @@ final class AppModel: ObservableObject {
     /// The cell the keyboard acts on and that anchors shift-range selection.
     @Published var focusID: String?
 
+    /// Families opened out in the grid, by the id of the photo they share
+    /// pixels with.
+    ///
+    /// Stacked is the default: a frame is one thing on the table, and its
+    /// alternative treatments are that same thing seen another way. Spreading
+    /// every variant across the grid made a good take look like a long one.
+    @Published var expandedStacks: Set<String> = []
+
+    func toggleStack(_ rootID: String) {
+        if expandedStacks.contains(rootID) {
+            expandedStacks.remove(rootID)
+        } else {
+            expandedStacks.insert(rootID)
+        }
+    }
+
     /// Number of columns the grid last laid out, so up/down arrows can move a row.
     var columnCount: Int = 1
 

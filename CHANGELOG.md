@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-13 - Draw a family of versions as a stack in the light table rather than side by side: one cell with a count, opened out with a click, `S`, or the context menu. A frame is one thing on the table, and spreading its treatments across the grid made a good take look like a long one.
+
 2026-08-12 - Wire Sparkle for silent macOS updates and drop the App Sandbox, keeping Hardened Runtime and the Photos entitlement that Hardened Runtime also reads. A macOS-only package turned out not to trouble the single multiplatform target: platformFilters on the build file means iOS resolves Sparkle and simply does not link it.
 
 2026-08-11 - Design over-the-air distribution to my own devices, and record it: ADR 007 renames the app to LightTable and moves it to `net.dev2.lighttable`, ADR 008 drops the macOS sandbox for Sparkle and adds an update prompt on iOS, and ADR 003 is amended — the account blocks App Store Connect, not provisioning, so Ad Hoc distribution was available all along.
