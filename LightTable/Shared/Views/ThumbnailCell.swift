@@ -22,6 +22,11 @@ struct ThumbnailCell: View, Equatable {
     /// open stack keeps its badge — that is what closes it again — but drops
     /// the pile, since the other photos are on the table beside it.
     var isStackExpanded: Bool = false
+    /// This photo belongs to a family that is currently opened out — including
+    /// the source it was made from. Opened members sit among unrelated photos,
+    /// so without a mark of their own the grid loses the fact that they are one
+    /// frame seen several ways.
+    var isInOpenStack: Bool = false
     var onToggleStack: (() -> Void)? = nil
 
     private var isStack: Bool { stackCount > 1 }
@@ -38,7 +43,14 @@ struct ThumbnailCell: View, Equatable {
     /// Selected cells inset their image to reveal a coloured mat behind it.
     /// Shrinking the photo is what makes selection readable at a glance, in a
     /// way a border drawn over a busy photo never is.
-    private var matInset: CGFloat { isActive ? 6 : 0 }
+    ///
+    /// An opened stack's members use the same device at half strength: a light
+    /// mat, narrower than the selection's, so a family reads as mounted
+    /// together without competing with what is selected.
+    private var matInset: CGFloat {
+        if isActive { return 6 }
+        return isInOpenStack ? 4 : 0
+    }
 
     /// A closed stack shows two cards peeking out behind the photo, offset down
     /// and right. An open one drops them: its members are on the table beside
@@ -78,6 +90,7 @@ struct ThumbnailCell: View, Equatable {
         .shadow(color: isFocused ? Color.accentColor.opacity(0.7) : .clear,
                 radius: isFocused ? 7 : 0)
         .animation(.easeOut(duration: 0.1), value: isActive)
+        .animation(.easeOut(duration: 0.15), value: isInOpenStack)
         .contentShape(Rectangle())
         .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
             // Referenced directly rather than held in a @StateObject: the
@@ -218,6 +231,9 @@ struct ThumbnailCell: View, Equatable {
     private var matColor: Color {
         if isFocused { return .accentColor }
         if isSelected { return .accentColor.opacity(0.75) }
+        // Deliberately colourless: a family is a fact about the photos, not a
+        // judgement of them, so it must not read as another verdict.
+        if isInOpenStack { return .white.opacity(0.5) }
         return .clear
     }
 
@@ -226,12 +242,14 @@ struct ThumbnailCell: View, Equatable {
     private var ringColor: Color {
         if isFocused { return .white }
         if isSelected { return .accentColor }
+        if isInOpenStack { return .white.opacity(0.6) }
         return .white.opacity(0.10)
     }
 
     private var ringWidth: CGFloat {
         if isFocused { return 2.5 }
         if isSelected { return 2 }
+        if isInOpenStack { return 1.5 }
         return 1
     }
 
@@ -249,5 +267,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.variantLabel == rhs.variantLabel
             && lhs.stackCount == rhs.stackCount
             && lhs.isStackExpanded == rhs.isStackExpanded
+            && lhs.isInOpenStack == rhs.isInOpenStack
     }
 }

@@ -382,6 +382,12 @@ the family out in place; the same again stacks it back. Nothing is hidden
 permanently and nothing is deleted — a closed stack is a way of looking, not a
 filter. Open stacks are remembered for the session only.
 
+**Opened out, the members stay marked.** They sit among unrelated photos, so
+each is mounted on a light mat with a light border — the same device selection
+uses, at half strength and without colour, since a family is a fact about the
+photos rather than a judgement of them. The source carries it too, so the run
+reads as one family opened out rather than a stack followed by loose photos.
+
 `S` acts on the focused cell alone rather than the selection, since opening
 every stack in a wide selection would rearrange the grid under the cursor.
 

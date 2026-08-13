@@ -119,7 +119,8 @@ struct TouchRootView: View {
                 } else {
                     TouchGrid(items: projection.visible,
                               sections: projection.sections,
-                              stackSizes: projection.stackSizes)
+                              stackSizes: projection.stackSizes,
+                              openStackIDs: projection.openStackIDs)
                 }
             }
         }
