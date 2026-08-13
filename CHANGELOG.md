@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-13 - Ship the iOS half of ADR 008 and cut the first iOS release: the app polls latest.json on launch and on returning to the foreground, and offers a sheet whose button opens the itms-services link. AppBuild is extracted from BuildStamp so the numbers displayed and the numbers compared come from one reader. Both platforms are now published: 0.2 (66) for iOS, 0.2 (63) for macOS.
+
 2026-08-13 - Draw a family of versions as a stack in the light table rather than side by side: one cell with a count, opened out with a click, `S`, or the context menu. A frame is one thing on the table, and spreading its treatments across the grid made a good take look like a long one. Opened out, the members stay marked with a light mat and border so the family still reads as one thing.
 
 2026-08-12 - Wire Sparkle for silent macOS updates and drop the App Sandbox, keeping Hardened Runtime and the Photos entitlement that Hardened Runtime also reads. A macOS-only package turned out not to trouble the single multiplatform target: platformFilters on the build file means iOS resolves Sparkle and simply does not link it.
