@@ -27,6 +27,9 @@ struct ThumbnailCell: View, Equatable {
     private var isStack: Bool { stackCount > 1 }
 
     @State private var image: PlatformImage?
+    /// Resolved off the render pass: reading it during layout would ask Photos
+    /// about every cell that scrolls past, in the middle of laying them out.
+    @State private var capture: CaptureKind?
     @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
     private var fillMode: ThumbnailFillMode {
@@ -89,6 +92,7 @@ struct ThumbnailCell: View, Equatable {
             // Referenced directly rather than held in a @StateObject: the
             // loader is shared, so wrapping it per cell made every thumbnail
             // observe it for no benefit.
+            capture = CaptureKindCache.kind(for: item)
             image = await ThumbnailLoader.shared.thumbnail(for: item,
                                            size: CGSize(width: size, height: size),
                                            mode: fillMode)
@@ -129,6 +133,38 @@ struct ThumbnailCell: View, Equatable {
         .help(isStackExpanded
               ? "Stack these versions back together"
               : "Show all \(stackCount) versions of this photo")
+    }
+
+    /// What the photo was shot as, when there is something worth saying.
+    ///
+    /// One chip rather than two: the camera and the format are a single fact
+    /// about the capture, and two separate marks in the corner of a thumbnail
+    /// start to compete with the picture.
+    @ViewBuilder
+    private var captureBadge: some View {
+        if let capture, capture.device != nil || capture.format.label != nil {
+            HStack(spacing: 3) {
+                if let device = capture.device {
+                    Image(systemName: device.symbolName)
+                }
+                if let label = capture.format.label {
+                    Text(label)
+                }
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.95))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.5), in: Capsule())
+            .padding(6)
+            .help(captureDescription)
+        }
+    }
+
+    private var captureDescription: String {
+        guard let capture else { return "" }
+        let parts = [capture.device?.label, capture.format.label].compactMap { $0 }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Photo
@@ -205,9 +241,10 @@ struct ThumbnailCell: View, Equatable {
             }
 
             Spacer()
-            HStack {
+            HStack(spacing: 4) {
                 if isStack { stackBadge }
                 Spacer()
+                captureBadge
                 if showsSelectionBadge {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 15, weight: .bold))

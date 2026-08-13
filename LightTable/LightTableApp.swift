@@ -75,6 +75,9 @@ struct LightTableApp: App {
                 Button("Rebuild from Photos Albums…") {
                     NotificationCenter.default.post(name: .rebuildFromPhotos, object: nil)
                 }
+                Button("Find Lost Versions…") {
+                    NotificationCenter.default.post(name: .rebuildVariants, object: nil)
+                }
             }
         }
         #endif

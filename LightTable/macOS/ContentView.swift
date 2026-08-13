@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var editorMode: EventEditor.Mode?
     @State private var showsShortcuts = false
     @State private var pendingImport: PhotosImport?
+    @State private var pendingVariantRebuild: VariantRebuilder.Proposal?
     @StateObject private var projection = LibraryProjection()
 
     var body: some View {
@@ -100,6 +101,31 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .rebuildFromPhotos)) { _ in
             pendingImport = ratings.readImportFromPhotos()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .rebuildVariants)) { _ in
+            pendingVariantRebuild = VariantRebuilder.proposal(for: library.items, ratings: ratings)
+        }
+        .alert("Find lost versions",
+               isPresented: Binding(get: { pendingVariantRebuild != nil },
+                                    set: { if !$0 { pendingVariantRebuild = nil } }),
+               presenting: pendingVariantRebuild) { proposal in
+            if proposal.isEmpty {
+                Button("OK", role: .cancel) { pendingVariantRebuild = nil }
+            } else {
+                Button("Restore") {
+                    VariantRebuilder.apply(proposal, context: context, ratings: ratings)
+                    pendingVariantRebuild = nil
+                }
+                Button("Cancel", role: .cancel) { pendingVariantRebuild = nil }
+            }
+        } message: { proposal in
+            Text(proposal.isEmpty
+                 ? "No photos in the library look like copies of each other."
+                 : """
+                   Found \(proposal.summary) that share a source. Restoring \
+                   stacks them together; no photo is changed or removed, and \
+                   families already recorded are left alone.
+                   """)
         }
         .task {
             await library.requestAccess()

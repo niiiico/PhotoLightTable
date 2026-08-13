@@ -33,22 +33,27 @@ enum PhotoVariants {
                        label: String,
                        context: ModelContext?,
                        library: PhotoLibraryService?) async throws -> String {
-        // Claiming our adjustment data means this is the untouched original,
-        // not the current render — so the variant starts from the same place
-        // the photo itself does.
-        guard let input = await PhotoEditSession.loadInput(for: item.asset),
-              let sourceURL = input.fullSizeImageURL else {
+        // Every part the photo is made of, not just its main image. Copying
+        // only `.photo` turned a duplicated Live Photo into a still and would
+        // drop the RAW half of a RAW+JPEG pair — the resource header warns
+        // that full fidelity means preserving every resource.
+        let sources = try await copiedResources(of: item.asset)
+        defer { for file in sources { try? FileManager.default.removeItem(at: file.url) } }
+        guard sources.contains(where: { $0.type == .photo }) else {
             throw VariantError.noOriginal
         }
 
         var placeholder: PHObjectPlaceholder?
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
-            let options = PHAssetResourceCreationOptions()
-            // The URL belongs to PhotoKit's editing session; moving it would
-            // take it out from under the asset being copied.
-            options.shouldMoveFile = false
-            request.addResource(with: .photo, fileURL: sourceURL, options: options)
+            for source in sources {
+                let options = PHAssetResourceCreationOptions()
+                options.originalFilename = source.originalFilename
+                // These are our own temporary copies, so letting PhotoKit take
+                // them saves writing every byte a second time.
+                options.shouldMoveFile = true
+                request.addResource(with: source.type, fileURL: source.url, options: options)
+            }
 
             // Carried over so the variant sorts next to its original rather
             // than to the moment it was made, which is what "alongside" means
@@ -149,6 +154,71 @@ enum PhotoVariants {
             }
             try? context.save()
         }
+    }
+
+    // MARK: - Copying the parts of a photo
+
+    struct CopiedResource {
+        let type: PHAssetResourceType
+        let url: URL
+        let originalFilename: String
+    }
+
+    /// The resources worth carrying into a copy.
+    ///
+    /// `.photo` is the untouched original — not `.fullSizePhoto`, which is the
+    /// render of whatever edit the source currently has, and not
+    /// `.adjustmentData`, since a variant starts from the original and gets its
+    /// own recipe. `.alternatePhoto` is the RAW beside a JPEG, and
+    /// `.pairedVideo` is what makes a Live Photo live.
+    private static func isWorthCopying(_ type: PHAssetResourceType) -> Bool {
+        switch type {
+        case .photo, .alternatePhoto, .pairedVideo, .video, .audio: return true
+        default: return false
+        }
+    }
+
+    /// Writes each resource out to a temporary file.
+    ///
+    /// There is no way to hand PhotoKit one asset's resources directly, so a
+    /// copy has to go through the file system. Network access is allowed
+    /// because the original may only exist in iCloud, and failing on a photo
+    /// that is merely not downloaded yet would be arbitrary.
+    private static func copiedResources(of asset: PHAsset) async throws -> [CopiedResource] {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("LightTableVariant-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        var copied: [CopiedResource] = []
+        for resource in PHAssetResource.assetResources(for: asset) where isWorthCopying(resource.type) {
+            let destination = directory.appendingPathComponent(resource.originalFilename)
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+
+            do {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    PHAssetResourceManager.default().writeData(for: resource,
+                                                               toFile: destination,
+                                                               options: options) { error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume()
+                        }
+                    }
+                }
+            } catch {
+                // One missing companion should not cost the whole duplicate:
+                // better a still copy of a Live Photo than no copy at all. The
+                // primary image is checked for by the caller.
+                continue
+            }
+
+            copied.append(CopiedResource(type: resource.type,
+                                         url: destination,
+                                         originalFilename: resource.originalFilename))
+        }
+        return copied
     }
 
     private static func record(_ assetID: String,

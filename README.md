@@ -263,6 +263,21 @@ lost) or **whole frame** (letterboxed on black, ragged grid, but you judge the
 real composition). The fill mode is part of the thumbnail cache key, so switching
 re-renders rather than serving stale crops.
 
+### Capture badges
+
+A thumbnail carries a small chip saying what it was shot as — a camera or phone
+glyph, and RAW or HEIF. Nothing is drawn for a plain JPEG: a badge on every
+photo is a badge on none of them.
+
+Read from `PHAssetResource`, which is local metadata Photos already holds, so no
+file is opened and no pixels are decoded while scrolling. EXIF would name the
+body precisely but means reading from each file, and the answer is only a badge.
+
+The device is therefore a guess from the format. A camera raw is conclusive — no
+phone writes a CR2 — and HEIF is Apple's capture format. DNG is the ambiguous
+one, since Apple ProRAW writes DNG too, so the filename decides it; anything
+still unclear gets no badge rather than a wrong one.
+
 **Loupe.** Which EXIF fields the info bar shows. Defaults are date, camera, lens,
 focal length, aperture, shutter and ISO; also available are exposure
 compensation, pixel dimensions, megapixels, file name and file size.
@@ -426,6 +441,33 @@ on" rather than "save what I have done".
 
 **Remove This Version…** takes one away again, behind a confirmation. Only ever
 a version, never an original.
+
+A copy carries **every resource** the source is made of, not just its main
+image — so a duplicated Live Photo is still live, and a RAW beside a JPEG comes
+with it. Only the source's own adjustment data is left behind, deliberately: a
+variant starts from the original and gets its own recipe.
+
+### Finding lost versions
+
+The family relationship lives only in this app's store — Photos records nothing
+about one asset being made from another, and there is no duplicate-detection
+API. **Find Lost Versions…** in the menu puts it back if it is ever lost.
+
+It works because a copy made here is the source's file copied verbatim, with
+`creationDate` and `location` carried over. Two assets agreeing on the moment,
+the filename and the dimensions are not similar photographs — they are the same
+photograph twice. Direction comes from `addedDate`: the creation date is copied
+and so cannot say which came first, but the date an asset entered the library is
+its own.
+
+It does not scan the library. The first pass buckets on creation date, which is
+already in memory; only photos that collide with another are asked anything
+further. A library of ten thousand photos where nothing was ever duplicated
+reads no resources at all.
+
+Families the store already knows about are left alone, since it holds the label
+the user chose and this cannot recover that — recovered ones are simply called
+"Version".
 
 ### Splitting
 
