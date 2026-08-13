@@ -37,7 +37,8 @@ struct LightTableView: View {
     @State private var dragLastTargetID: String?
     /// The variant awaiting confirmation before it is removed from the library.
     @State private var pendingRemoval: PhotoItem?
-    @State private var removalError: String?
+    /// Anything that went wrong making or removing a photo.
+    @State private var actionError: String?
 
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
@@ -113,11 +114,11 @@ struct LightTableView: View {
         } message: { item in
             Text(removalMessage(for: item))
         }
-        .alert("Could not remove that version",
-               isPresented: Binding(get: { removalError != nil },
-                                    set: { if !$0 { removalError = nil } }),
-               presenting: removalError) { _ in
-            Button("OK", role: .cancel) { removalError = nil }
+        .alert("That didn't work",
+               isPresented: Binding(get: { actionError != nil },
+                                    set: { if !$0 { actionError = nil } }),
+               presenting: actionError) { _ in
+            Button("OK", role: .cancel) { actionError = nil }
         } message: { message in
             Text(message)
         }
@@ -181,12 +182,16 @@ struct LightTableView: View {
     /// on", not "save what I have done".
     private func duplicate(_ item: PhotoItem) {
         Task {
-            _ = try? await PhotoVariants.create(from: item,
-                                                applying: .neutral,
-                                                label: "Copy",
-                                                context: context,
-                                                library: library)
-            ratings.reloadVariants()
+            do {
+                _ = try await PhotoVariants.create(from: item,
+                                                   applying: .neutral,
+                                                   label: "Copy",
+                                                   context: context,
+                                                   library: library)
+                ratings.reloadVariants()
+            } catch {
+                actionError = error.localizedDescription
+            }
         }
     }
 
@@ -210,7 +215,7 @@ struct LightTableView: View {
                 try await PhotoVariants.remove(item, context: context, ratings: ratings)
                 await library.reload()
             } catch {
-                removalError = error.localizedDescription
+                actionError = error.localizedDescription
             }
         }
     }
@@ -219,11 +224,15 @@ struct LightTableView: View {
     /// session open to take a recipe from.
     private func splitLeftRight(_ item: PhotoItem) {
         Task {
-            _ = try? await PhotoVariants.splitLeftRight(item,
-                                                        applying: .neutral,
-                                                        context: context,
-                                                        library: library)
-            ratings.reloadVariants()
+            do {
+                _ = try await PhotoVariants.splitLeftRight(item,
+                                                           applying: .neutral,
+                                                           context: context,
+                                                           library: library)
+                ratings.reloadVariants()
+            } catch {
+                actionError = error.localizedDescription
+            }
         }
     }
 
