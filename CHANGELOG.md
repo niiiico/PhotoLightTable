@@ -5,6 +5,8 @@ several major features.
 
 2026-08-13 - Ship the iOS half of ADR 008 and cut the first iOS release: the app polls latest.json on launch and on returning to the foreground, and offers a sheet whose button opens the itms-services link. AppBuild is extracted from BuildStamp so the numbers displayed and the numbers compared come from one reader. Both platforms are now published: 0.2 (66) for iOS, 0.2 (63) for macOS.
 
+2026-08-13 - Give the app an icon: a backlit panel with three frames on it, drawn in Core Graphics by a tool in tools/icon so it can be regenerated and diffed rather than living only as a PNG. There was no asset catalog at all until now, only a build setting pointing at one.
+
 2026-08-13 - Carry every resource into a duplicate, so a copied Live Photo stays live and a RAW beside a JPEG comes with it; badge thumbnails with what they were shot as, read from local resource metadata rather than EXIF; and add Find Lost Versions, which recovers family records from the library itself by matching photos that share a moment and a file, ordered by the date they were added.
 
 2026-08-13 - Quieten the selection: one accent colour at two strengths instead of an accent mat, a white ring and a glow all saying the same thing. Add Duplicate and Remove This Version to the grid's context menu — the first thing in the app that deletes, narrowed to photos it made itself and confirmed first, which amends ADR 001.
