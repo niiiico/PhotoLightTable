@@ -35,6 +35,9 @@ struct LightTableView: View {
     @State private var dragBaseSelection: Set<String> = []
     @State private var dragCombine: AppModel.SelectionCombine = .replace
     @State private var dragLastTargetID: String?
+    /// The variant awaiting confirmation before it is removed from the library.
+    @State private var pendingRemoval: PhotoItem?
+    @State private var removalError: String?
 
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
@@ -101,6 +104,23 @@ struct LightTableView: View {
         .overlay {
             if items.isEmpty { emptyState }
         }
+        .alert("Remove this version?",
+               isPresented: Binding(get: { pendingRemoval != nil },
+                                    set: { if !$0 { pendingRemoval = nil } }),
+               presenting: pendingRemoval) { item in
+            Button("Remove", role: .destructive) { remove(item) }
+            Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        } message: { item in
+            Text(removalMessage(for: item))
+        }
+        .alert("Could not remove that version",
+               isPresented: Binding(get: { removalError != nil },
+                                    set: { if !$0 { removalError = nil } }),
+               presenting: removalError) { _ in
+            Button("OK", role: .cancel) { removalError = nil }
+        } message: { message in
+            Text(message)
+        }
     }
 
     // MARK: - Pieces
@@ -151,6 +171,48 @@ struct LightTableView: View {
                 dragCombine = .replace
                 dragLastTargetID = nil
             }
+    }
+
+    /// A plain copy: the same pixels under a new asset, joined to the family so
+    /// it stacks with the photo it came from.
+    ///
+    /// Neutral rather than carrying an adjustment, since there is no session
+    /// open here to take a recipe from — this is "another one of these to work
+    /// on", not "save what I have done".
+    private func duplicate(_ item: PhotoItem) {
+        Task {
+            _ = try? await PhotoVariants.create(from: item,
+                                                applying: .neutral,
+                                                label: "Copy",
+                                                context: context,
+                                                library: library)
+            ratings.reloadVariants()
+        }
+    }
+
+    private func removalMessage(for item: PhotoItem) -> String {
+        let name = ratings.variantLabel(for: item.id) ?? "This version"
+        return """
+        “\(name)” goes to Recently Deleted in Photos, where it can be brought \
+        back for 30 days. The photo it was made from is not touched.
+        """
+    }
+
+    /// Removes a variant from the library.
+    ///
+    /// The only thing in this app that deletes, and deliberately narrow: it is
+    /// offered for photos the app itself created, never for an original. See
+    /// docs/adr-001, which this amends.
+    private func remove(_ item: PhotoItem) {
+        pendingRemoval = nil
+        Task {
+            do {
+                try await PhotoVariants.remove(item, context: context, ratings: ratings)
+                await library.reload()
+            } catch {
+                removalError = error.localizedDescription
+            }
+        }
     }
 
     /// Splitting from the grid uses the photo as it stands, since there is no
@@ -304,7 +366,13 @@ struct LightTableView: View {
             }
         }
         Divider()
+        Button("Duplicate") { duplicate(item) }
         Button("Split into Left and Right") { splitLeftRight(item) }
+        // Offered only for photos this app made. An original is someone's
+        // photograph; a variant is a copy of one, and its source is still here.
+        if ratings.isVariant(item.id) {
+            Button("Remove This Version…", role: .destructive) { pendingRemoval = item }
+        }
         Divider()
         Button("Copy Adjustments") {
             Task { await clipboard.copy(from: item) }

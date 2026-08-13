@@ -45,3 +45,32 @@ would stall the UI and hammer iCloud sync.
   album, and remain internal.
 - Nothing is deleted. A reject is a mark and a membership; emptying the Rejected
   album stays a deliberate act in Photos.
+
+## Amendment, 2026-08-13 — one narrow exception
+
+"Nothing is deleted" now has a single exception: **a variant may be removed from
+the library, from the grid's context menu.** An original never can.
+
+The rule was about photographs. A photograph is evidence of a moment that
+happened once, and no convenience justifies an app destroying one. A variant is
+not that — it is a copy this app made a minute ago
+([ADR 006](adr-006-variants-not-exports.md)), the photo it came from is still
+there, and the pixels it was built from are not lost with it. Making one is
+cheap, so the ability to unmake one is part of the same feature; without it a
+misjudged Duplicate is permanent.
+
+The narrowness is the point, and it is enforced rather than merely intended:
+removal is offered only where `RatingStore.isVariant` holds, and
+`PhotoVariants.remove` refuses anything else even if called directly. What makes
+a photo removable is that this app has a record saying it created it.
+
+Two further safeguards, neither of which is the app's own doing:
+
+- PhotoKit's `deleteAssets` moves an asset to **Recently Deleted**, so it can be
+  brought back in Photos for thirty days. Nothing here erases anything.
+- macOS puts its own confirmation in front of the deletion, on top of the app's.
+
+The bookkeeping is ordered so a refused or cancelled deletion leaves nothing
+behind: the variant record is dropped only *after* the asset is gone. A variant
+made from the removed one is re-pointed at its grandparent rather than orphaned,
+since what defines a family is the shared pixels, not the intermediate step.

@@ -6,8 +6,9 @@ date or by user-defined events, with picks and rejects mirrored back into real
 Photos albums — and a non-destructive editor whose adjustments round-trip
 through Photos as parameters rather than as flattened pixels.
 
-Nothing is ever deleted, and nothing is ever flattened. Every edit stays
-revertible, in this app and in Photos.app.
+No photograph is ever deleted, and nothing is ever flattened. Every edit stays
+revertible, in this app and in Photos.app. The one thing the app will remove is
+a *version* it made itself, behind a confirmation — never an original.
 
 Requires macOS 15+ or iOS/iPadOS 18+. Open `LightTable.xcodeproj` in Xcode
 and run, or build from the command line — see [Layout](#layout) for the
@@ -418,6 +419,14 @@ treatment I'm making already one of them.
 Names are suggested from the recipe itself, so a duplicate arrives described —
 "B&W", "Muted", "Warm", "Cool", "Punchy", "Crop" — rather than as "Copy".
 
+**Duplicate** in the grid's context menu makes a plain copy, joined to the same
+family so it stacks with its source. It carries no adjustment, because there is
+no editing session open to take one from: it means "another one of these to work
+on" rather than "save what I have done".
+
+**Remove This Version…** takes one away again, behind a confirmation. Only ever
+a version, never an original.
+
 ### Splitting
 
 A photo can be split into left and right halves: two new photos from one, on the
@@ -465,9 +474,15 @@ state that could itself go stale.
 
 ## Current scope
 
-Non-destructive, in both senses. Nothing is ever deleted from the library:
-rejects are marked and collected into the Rejected album, and emptying it is a
-manual decision in Photos. Nothing is ever flattened either: edits are stored as
+Non-destructive, in both senses. Rejects are marked and collected into the
+Rejected album, and emptying it is a manual decision in Photos.
+
+The single exception is removing a **version** — a photo this app made from
+another one. That is offered from the grid's context menu, behind a
+confirmation, and never for an original. Making a duplicate is cheap, so being
+able to unmake one belongs to the same feature; and the photo it was made from
+is untouched. It goes to Recently Deleted in Photos, recoverable for thirty
+days. See the amendment to [ADR 001](docs/adr-001-ratings-outside-photos.md). Nothing is ever flattened either: edits are stored as
 parameters and can be reverted to the original, here or in Photos.app, however
 many variants have been made from them.
 

@@ -14,11 +14,14 @@ enum PhotoVariants {
     enum VariantError: LocalizedError {
         case noOriginal
         case creationFailed
+        case notAVariant
 
         var errorDescription: String? {
             switch self {
             case .noOriginal: return "Could not read the original photo."
             case .creationFailed: return "Could not add the new photo to your library."
+            case .notAVariant:
+                return "That is an original photo, not a version made here — it can only be removed in Photos."
             }
         }
     }
@@ -108,6 +111,43 @@ enum PhotoVariants {
                             y: crop.y,
                             width: width,
                             height: crop.height)
+        }
+    }
+
+    /// Removes a variant from the library.
+    ///
+    /// The single place in this app that deletes anything, and deliberately
+    /// narrow. [ADR 001](../../../docs/adr-001-ratings-outside-photos.md) says
+    /// nothing is ever deleted, which was about *photographs* — a variant is a
+    /// copy this app made, and the photo it came from stays. Removing one
+    /// destroys no picture that was taken.
+    ///
+    /// PhotoKit's `deleteAssets` moves an asset to Recently Deleted rather than
+    /// erasing it, so this is recoverable in Photos for thirty days, and macOS
+    /// puts its own confirmation in front of it besides ours.
+    @MainActor
+    static func remove(_ item: PhotoItem,
+                       context: ModelContext?,
+                       ratings: RatingStore?) async throws {
+        guard ratings?.isVariant(item.id) ?? false else {
+            throw VariantError.notAVariant
+        }
+
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.deleteAssets([item.asset] as NSArray)
+        }
+
+        // Only once the asset is actually gone: if the deletion is refused or
+        // cancelled, the record has to survive or the photo becomes a variant
+        // the app no longer knows anything about.
+        ratings?.forgetVariant(item.id)
+
+        if let context, let events = try? context.fetch(FetchDescriptor<LightTableEvent>()) {
+            for event in events {
+                event.pinnedAssetIDs.removeAll { $0 == item.id }
+                event.excludedAssetIDs.removeAll { $0 == item.id }
+            }
+            try? context.save()
         }
     }
 

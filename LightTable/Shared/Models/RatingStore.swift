@@ -102,6 +102,30 @@ final class RatingStore: ObservableObject {
 
     func variantLabel(for assetID: String) -> String? { variantLabels[assetID] }
 
+    /// Whether this photo was made by this app from another one.
+    ///
+    /// The test for what may be removed from the library: a variant is
+    /// derived, and its source is still there, so taking it away destroys no
+    /// photography. An original fails this and is never offered.
+    func isVariant(_ assetID: String) -> Bool { variantLabels[assetID] != nil }
+
+    /// Drops the record of a variant, after the asset itself has gone.
+    ///
+    /// Anything made *from* this variant is re-pointed at the photo it came
+    /// from rather than orphaned, so a family stays one family: the pixels are
+    /// still shared, whatever the middle step was.
+    func forgetVariant(_ assetID: String) {
+        guard let rows = try? context.fetch(FetchDescriptor<PhotoVariant>()) else { return }
+        guard let row = rows.first(where: { $0.assetID == assetID }) else { return }
+
+        for child in rows where child.originalAssetID == assetID {
+            child.originalAssetID = row.originalAssetID
+        }
+        context.delete(row)
+        try? context.save()
+        reloadVariants()
+    }
+
     /// The photo everything in this family descends from.
     func rootAsset(of assetID: String) -> String { rootByAsset[assetID] ?? assetID }
 

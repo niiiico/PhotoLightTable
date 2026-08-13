@@ -38,7 +38,11 @@ struct ThumbnailCell: View, Equatable {
     /// Selected cells inset their image to reveal a coloured mat behind it.
     /// Shrinking the photo is what makes selection readable at a glance, in a
     /// way a border drawn over a busy photo never is.
-    private var matInset: CGFloat { isActive ? 6 : 0 }
+    ///
+    /// Kept narrow. The mat is a frame around a photograph, and the moment it
+    /// is wide enough to notice as a colour it is competing with the picture it
+    /// is supposed to be presenting.
+    private var matInset: CGFloat { isActive ? 4 : 0 }
 
     /// A closed stack shows two cards peeking out behind the photo, offset down
     /// and right. An open one drops them: its members are on the table beside
@@ -75,8 +79,10 @@ struct ThumbnailCell: View, Equatable {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(ringColor, lineWidth: ringWidth)
         }
-        .shadow(color: isFocused ? Color.accentColor.opacity(0.7) : .clear,
-                radius: isFocused ? 7 : 0)
+        // A hint of lift rather than a halo: enough to find the keyboard
+        // cursor while scanning, not enough to see as a glow.
+        .shadow(color: isFocused ? Color.accentColor.opacity(0.35) : .clear,
+                radius: isFocused ? 4 : 0)
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
         .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
@@ -216,22 +222,27 @@ struct ThumbnailCell: View, Equatable {
     // MARK: - Selection styling
 
     private var matColor: Color {
-        if isFocused { return .accentColor }
-        if isSelected { return .accentColor.opacity(0.75) }
+        if isFocused { return .accentColor.opacity(0.85) }
+        if isSelected { return .accentColor.opacity(0.35) }
         return .clear
     }
 
-    /// The focused cell rings in white so the keyboard cursor stays distinct
-    /// from the rest of the selection, which rings in the accent colour.
+    /// Focus and selection are told apart by strength alone, in one colour.
+    ///
+    /// The focused cell used to ring in white on top of an accent mat, with an
+    /// accent glow under it — three marks for one state. White read as a second
+    /// colour rather than as emphasis, and on a pale photograph it was the
+    /// brightest thing in the grid. Depth of the same accent says the same
+    /// thing more quietly, and leaves white to mean the stack outline.
     private var ringColor: Color {
-        if isFocused { return .white }
-        if isSelected { return .accentColor }
+        if isFocused { return .accentColor }
+        if isSelected { return .accentColor.opacity(0.5) }
         return .white.opacity(0.10)
     }
 
     private var ringWidth: CGFloat {
-        if isFocused { return 2.5 }
-        if isSelected { return 2 }
+        if isFocused { return 2 }
+        if isSelected { return 1.5 }
         return 1
     }
 
