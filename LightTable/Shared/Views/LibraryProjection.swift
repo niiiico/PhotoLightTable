@@ -31,10 +31,11 @@ final class LibraryProjection: ObservableObject {
     /// How many photos each family holds, keyed by the photo standing for it in
     /// the grid. Only present for families with more than one member showing.
     private(set) var stackSizes: [String: Int] = [:]
-    /// Every photo belonging to a family that is currently opened out, its
-    /// source included. An opened stack still has to read as one thing, so its
-    /// members are marked rather than left looking like unrelated neighbours.
-    private(set) var openStackIDs: Set<String> = []
+    /// Members of each family that is currently opened out, source first, in
+    /// the order they are laid out. An opened stack is drawn *around* rather
+    /// than having each of its photos framed: they are one frame seen several
+    /// ways, and a border per cell says the opposite.
+    private(set) var openFamilies: [[String]] = []
 
     private var key: Key?
 
@@ -63,7 +64,7 @@ final class LibraryProjection: ObservableObject {
                                    isExpanded: { app.expandedStacks.contains($0) })
         visible = stacked.items
         stackSizes = stacked.sizes
-        openStackIDs = stacked.openIDs
+        openFamilies = stacked.openFamilies
         tally = ScopeTally(items: scoped, ratings: ratings)
         sections = PhotoLibraryService.groupByDay(visible,
                                                   oldestFirst: app.sortOrder == .oldestFirst)
@@ -92,12 +93,12 @@ final class LibraryProjection: ObservableObject {
         rootOf: (String) -> String,
         variantsOf: (String) -> [String],
         isExpanded: (String) -> Bool
-    ) -> (items: [Item], sizes: [String: Int], openIDs: Set<String>) where Item.ID == String {
+    ) -> (items: [Item], sizes: [String: Int], openFamilies: [[String]]) where Item.ID == String {
         let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var emitted = Set<String>()
         var result: [Item] = []
         var sizes: [String: Int] = [:]
-        var openIDs = Set<String>()
+        var openFamilies: [[String]] = []
         result.reserveCapacity(items.count)
 
         for item in items where !emitted.contains(item.id) {
@@ -126,13 +127,12 @@ final class LibraryProjection: ObservableObject {
             sizes[item.id] = family.count + 1
 
             if isExpanded(item.id) {
-                // The source is marked too: the run has to read as one family
-                // opened out, not as a stack followed by loose photos.
-                openIDs.insert(item.id)
+                // The source leads: the outline has to enclose the family
+                // opened out, not the variants with their source left outside.
+                openFamilies.append([item.id] + family.map(\.id))
                 for variant in family {
                     result.append(variant)
                     emitted.insert(variant.id)
-                    openIDs.insert(variant.id)
                 }
             } else {
                 for variant in family {
@@ -145,7 +145,7 @@ final class LibraryProjection: ObservableObject {
         for item in items where !emitted.contains(item.id) {
             result.append(item)
         }
-        return (result, sizes, openIDs)
+        return (result, sizes, openFamilies)
     }
 
     /// Cheap structural summary of the events, so edits to a date range or to

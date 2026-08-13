@@ -21,7 +21,7 @@ private struct Family {
 private func stack(_ items: [FakePhoto],
                    families: [Family] = [],
                    expanded: Set<String> = [])
--> (items: [FakePhoto], sizes: [String: Int], openIDs: Set<String>) {
+-> (items: [FakePhoto], sizes: [String: Int], openFamilies: [[String]]) {
     var rootOf: [String: String] = [:]
     var variantsOf: [String: [String]] = [:]
     for family in families {
@@ -66,48 +66,56 @@ struct StackingTests {
         #expect(result.sizes == ["a": 3])
     }
 
-    @Test("An open family marks every member, its source included")
-    func openFamilyIsMarked() {
-        // Opened members sit among unrelated photos, so each has to carry the
-        // fact that it is one frame seen several ways. The source counts: the
-        // run must read as a family opened out, not as a stack followed by
-        // loose photos.
+    @Test("An open family is reported source first, in laid-out order")
+    func openFamilyIsReported() {
+        // The outline is drawn around the whole run, so the source has to be in
+        // the list — enclosing the variants and leaving their source outside
+        // would say the opposite of what is meant.
         let result = stack(photos("a", "bw", "crop", "b"),
                            families: [Family(root: "a", variants: ["bw", "crop"])],
                            expanded: ["a"])
 
-        #expect(result.openIDs == ["a", "bw", "crop"])
+        #expect(result.openFamilies == [["a", "bw", "crop"]])
     }
 
-    @Test("A closed family marks nothing")
-    func closedFamilyIsNotMarked() {
-        // There is nothing to tie together: the members are not on the table.
+    @Test("A closed family is not reported")
+    func closedFamilyIsNotReported() {
+        // There is nothing to draw around: the members are not on the table.
         let result = stack(photos("a", "bw"),
                            families: [Family(root: "a", variants: ["bw"])])
 
-        #expect(result.openIDs.isEmpty)
+        #expect(result.openFamilies.isEmpty)
     }
 
-    @Test("Only the opened family is marked when another is closed")
-    func markingIsPerFamily() {
+    @Test("Only the opened family is reported when another is closed")
+    func reportingIsPerFamily() {
         let result = stack(photos("a", "a-bw", "b", "b-bw"),
                            families: [Family(root: "a", variants: ["a-bw"]),
                                       Family(root: "b", variants: ["b-bw"])],
                            expanded: ["b"])
 
-        #expect(result.openIDs == ["b", "b-bw"])
+        #expect(result.openFamilies == [["b", "b-bw"]])
     }
 
-    @Test("Expanding a photo with no family marks nothing")
-    func expandingASingletonMarksNothing() {
+    @Test("Expanding a photo with no family reports nothing")
+    func expandingASingletonReportsNothing() {
         // Stale expansion state — a family whose variants have since gone —
-        // must not leave a lone photo framed as though it were a group.
+        // must not leave a lone photo outlined as though it were a group.
         let result = stack(photos("a", "b"),
                            families: [Family(root: "a", variants: ["gone"])],
                            expanded: ["a"])
 
-        #expect(result.openIDs.isEmpty)
+        #expect(result.openFamilies.isEmpty)
         #expect(result.sizes.isEmpty)
+    }
+
+    @Test("Only the members actually showing are reported")
+    func reportsWhatIsShowing() {
+        let result = stack(photos("a", "bw"),
+                           families: [Family(root: "a", variants: ["bw", "crop"])],
+                           expanded: ["a"])
+
+        #expect(result.openFamilies == [["a", "bw"]])
     }
 
     @Test("Variants are gathered to their source wherever they had sorted")

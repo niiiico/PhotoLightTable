@@ -382,11 +382,21 @@ the family out in place; the same again stacks it back. Nothing is hidden
 permanently and nothing is deleted — a closed stack is a way of looking, not a
 filter. Open stacks are remembered for the session only.
 
-**Opened out, the members stay marked.** They sit among unrelated photos, so
-each is mounted on a light mat with a light border — the same device selection
-uses, at half strength and without colour, since a family is a fact about the
-photos rather than a judgement of them. The source carries it too, so the run
-reads as one family opened out rather than a stack followed by loose photos.
+**Opened out, the family is drawn around** — one light outline enclosing the
+whole run, source included, sitting in the grid's spacing gutter rather than
+over the photographs. Not a border per cell: the point of a family is that these
+are one frame seen several ways, and framing each photo separately says the
+opposite.
+
+A run of cells wraps, so the outline is one rectangle **per row** — the shape a
+text selection has, a partial row then whole rows then a partial row. A single
+enclosing rectangle would swallow every unrelated photo on the rows between.
+
+The rows are recovered by grouping the laid-out cell frames on their `y`, since
+the grid does not report what it put where. Those frames are already collected
+for drag-selection, so the outline costs no extra measurement. Only cells that
+are actually on screen have frames, so a family scrolled half out of view is
+drawn around the part that is showing.
 
 `S` acts on the focused cell alone rather than the selection, since opening
 every stack in a wide selection would rearrange the grid under the cursor.

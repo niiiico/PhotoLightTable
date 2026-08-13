@@ -11,8 +11,9 @@ struct TouchGrid: View {
     let sections: [DaySection]
     /// How many photos each stack stands for, keyed by the one showing.
     let stackSizes: [String: Int]
-    /// Every photo belonging to a family that is opened out.
-    let openStackIDs: Set<String>
+    /// Members of each opened family, so the grid can draw one outline around
+    /// each rather than framing every photo separately.
+    let openFamilies: [[String]]
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
@@ -20,6 +21,11 @@ struct TouchGrid: View {
 
     @State private var cellSize: CGFloat = 120
     @State private var isSelecting = false
+    /// Where each visible cell was laid out, so an opened family can be drawn
+    /// around. Collected the same way the Mac grid does it.
+    @State private var cellFrames: [String: CGRect] = [:]
+
+    private static let gridSpace = "touchGrid"
 
     var body: some View {
         ScrollView {
@@ -35,6 +41,13 @@ struct TouchGrid: View {
                 }
             }
             .padding(4)
+            .coordinateSpace(name: Self.gridSpace)
+            .onPreferenceChange(CellFramesKey.self) { cellFrames = $0 }
+            .overlay {
+                StackOutlineOverlay(families: openFamilies,
+                                    cellFrames: cellFrames,
+                                    inset: 3)
+            }
         }
         .overlay {
             if items.isEmpty { emptyState }
@@ -65,9 +78,15 @@ struct TouchGrid: View {
                       variantLabel: ratings.variantLabel(for: item.id),
                       stackCount: stackSizes[item.id] ?? 0,
                       isStackExpanded: app.expandedStacks.contains(item.id),
-                      isInOpenStack: openStackIDs.contains(item.id),
                       onToggleStack: { app.toggleStack(item.id) })
         .equatable()
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: CellFramesKey.self,
+                    value: [item.id: geo.frame(in: .named(Self.gridSpace))])
+            }
+        )
         .onTapGesture {
             if isSelecting {
                 toggle(item)

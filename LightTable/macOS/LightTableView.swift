@@ -9,8 +9,9 @@ struct LightTableView: View {
     let sections: [DaySection]
     /// How many photos each stack stands for, keyed by the one showing.
     let stackSizes: [String: Int]
-    /// Every photo belonging to a family that is opened out.
-    let openStackIDs: Set<String>
+    /// Members of each opened family, so the grid can draw one outline around
+    /// each rather than framing every photo separately.
+    let openFamilies: [[String]]
     let events: [LightTableEvent]
     /// Opens the event editor seeded with the given photos.
     let onNewEvent: ([String]) -> Void
@@ -67,6 +68,11 @@ struct LightTableView: View {
                     }
                     .coordinateSpace(name: Self.gridSpace)
                     .onPreferenceChange(CellFramesKey.self) { cellFrames = $0 }
+                    .overlay {
+                        StackOutlineOverlay(families: openFamilies,
+                                            cellFrames: cellFrames,
+                                            inset: spacing / 2 - 1)
+                    }
                     .gesture(dragSelectGesture)
                 }
                 .background {
@@ -233,7 +239,6 @@ struct LightTableView: View {
                       variantLabel: ratings.variantLabel(for: item.id),
                       stackCount: stackSizes[item.id] ?? 0,
                       isStackExpanded: app.expandedStacks.contains(item.id),
-                      isInOpenStack: openStackIDs.contains(item.id),
                       onToggleStack: { app.toggleStack(item.id) })
             .equatable()
             .id(item.id)
@@ -431,11 +436,4 @@ struct LightTableView: View {
 }
 
 /// Collects cell frames so a drag can tell which photo it is over.
-struct CellFramesKey: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
 #endif
