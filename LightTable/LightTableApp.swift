@@ -95,6 +95,7 @@ struct LightTableApp: App {
         ContentView()
         #else
         TouchRootView()
+            .updateCheck()
         #endif
     }
 }
