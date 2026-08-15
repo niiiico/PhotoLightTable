@@ -387,10 +387,17 @@ struct LightTableView: View {
         Button("Reject  (X)") { ratings.setPick(.rejected, for: targets) }
         Button("Clear Rating  (U)") { ratings.clear(targets) }
         Divider()
-        ForEach(ColorLabel.allCases) { color in
-            Button("\(color.label)  (\(color.shortcutKey))") { ratings.setColor(color, for: targets) }
+        // Folded away: six colours at the top level pushed everything below
+        // them out of reach, and the keys are how a colour is actually
+        // assigned — the menu is where you go to remember which key, not to
+        // avoid using it.
+        Menu("Colour") {
+            ForEach(ColorLabel.allCases) { color in
+                Button("\(color.label)  (\(color.shortcutKey))") { ratings.setColor(color, for: targets) }
+            }
+            Divider()
+            Button("No Colour") { ratings.setColor(nil, for: targets) }
         }
-        Button("No Colour") { ratings.setColor(nil, for: targets) }
         Divider()
         // Always present, even with no events yet — creating the first one is
         // the item people go looking for here.

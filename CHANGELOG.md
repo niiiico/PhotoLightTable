@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-15 - Fold the colour labels into a submenu in the grid's context menu, so making a photo — duplicate, split, remove a version — is not six items below the fold.
+
 2026-08-15 - Stack a family back up from any of its members, not only from the photo they were made from, moving focus and selection to the source first so neither is left pointing at a photo that is no longer showing.
 
 2026-08-15 - Fix Split and Duplicate throwing away the photo's own edit: with no editing session open, the grid passed a neutral recipe, so a split of an edited photo came out built from the original pixels. Add a 6:2 crop ratio, and a straighten slider with Auto — the photo is scaled into the largest rectangle of its own proportions that still fits the rotation, and Auto reads the horizon with Vision, whose sign convention was measured against drawn tilts rather than assumed.
