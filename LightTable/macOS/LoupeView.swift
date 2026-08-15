@@ -36,6 +36,8 @@ struct LoupeView: View {
     @State private var brushRadius: Double = BrushStroke.defaultRadius
     @State private var isErasing = false
     @State private var brushHistory = BrushHistory()
+    @State private var isFindingHorizon = false
+    @State private var horizonNote: String?
     /// The red wash follows what is being judged: the mask's extent while the
     /// brush is in hand, the photograph itself once the sliders are in use.
     /// A colour cast over the picture makes tonal decisions impossible.
@@ -454,10 +456,15 @@ struct LoupeView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        sectionHeading("Crop", isReset: edit.recipe.crop.isFull) {
+                        sectionHeading("Crop",
+                                       isReset: edit.recipe.crop.isFull
+                                           && edit.recipe.straighten == 0) {
                             edit.recipe.crop = .full
+                            edit.recipe.straighten = 0
                             renderForCurrentTool()
                         }
+
+                        straightenRow
 
                         Toggle(isOn: Binding(get: { isCropping }, set: { setCropping($0) })) {
                             Label("Show crop handles", systemImage: "crop")
@@ -908,6 +915,79 @@ struct LoupeView: View {
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
+    }
+
+    /// Straighten lives with the crop because it is the same act — deciding
+    /// where the frame sits — and because it takes reach off the edges, which
+    /// only makes sense next to the control that shows them.
+    private var straightenRow: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack {
+                Text("Straighten").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text(String(format: "%+.1f°", edit.recipe.straighten))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Button {
+                    autoStraighten()
+                } label: {
+                    if isFindingHorizon {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Text("Auto")
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.tint)
+                .disabled(isFindingHorizon)
+                .help("Level the horizon, if one can be found")
+            }
+
+            Slider(value: Binding(get: { edit.recipe.straighten },
+                                  set: { setStraighten($0) }),
+                   in: PhotoEditRecipe.straightenRange)
+                .controlSize(.small)
+                .onDoubleClick { setStraighten(0) }
+                .help("Double-click to reset")
+
+            if let horizonNote {
+                Text(horizonNote)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func setStraighten(_ degrees: Double) {
+        horizonNote = nil
+        edit.recipe.straighten = degrees
+        renderForCurrentTool()
+    }
+
+    /// A photo with no horizon in it is not a failure, so it is said quietly
+    /// rather than raised as an error — Vision finds nothing in a level photo
+    /// just as it finds nothing in a picture of a wall, and it cannot tell the
+    /// two apart.
+    private func autoStraighten() {
+        guard let displayed = edit.preview ?? image else { return }
+        isFindingHorizon = true
+        horizonNote = nil
+        Task {
+            guard let source = CIImage.from(displayed) else {
+                isFindingHorizon = false
+                horizonNote = "Could not read the photo to look for a horizon."
+                return
+            }
+            let found = await AutoStraighten.angle(in: source)
+            isFindingHorizon = false
+            if let found {
+                edit.recipe.straighten = found
+                renderForCurrentTool()
+            } else {
+                horizonNote = "No horizon found — straighten by hand."
+            }
+        }
     }
 
     private var whiteBalanceRow: some View {

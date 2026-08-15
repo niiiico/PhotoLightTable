@@ -184,7 +184,7 @@ struct LightTableView: View {
         Task {
             do {
                 _ = try await PhotoVariants.create(from: item,
-                                                   applying: .neutral,
+                                                   applying: currentRecipe(of: item),
                                                    label: "Copy",
                                                    context: context,
                                                    library: library)
@@ -220,13 +220,22 @@ struct LightTableView: View {
         }
     }
 
-    /// Splitting from the grid uses the photo as it stands, since there is no
-    /// session open to take a recipe from.
+    /// The photo as it stands, adjustments included.
+    ///
+    /// There is no editing session open in the grid, so the recipe is read back
+    /// from the photo itself. Passing a neutral one instead built the copy from
+    /// the original pixels and threw the photo's own edit away — a split of an
+    /// edited photo came out looking nothing like what was on screen.
+    private func currentRecipe(of item: PhotoItem) async -> PhotoEditRecipe {
+        await PhotoEditSession.recipe(of: item.asset) ?? .neutral
+    }
+
+    /// Splitting from the grid uses the photo as it stands.
     private func splitLeftRight(_ item: PhotoItem) {
         Task {
             do {
                 _ = try await PhotoVariants.splitLeftRight(item,
-                                                           applying: .neutral,
+                                                           applying: currentRecipe(of: item),
                                                            context: context,
                                                            library: library)
                 ratings.reloadVariants()

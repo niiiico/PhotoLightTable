@@ -602,6 +602,12 @@ struct PhotoEditRecipe: Codable, Equatable {
     var tone = ToneAdjustments()
     var masks: [EditMask] = []
     var crop: CropRect = .full
+    /// Degrees to rotate the photo to level it, positive anticlockwise. Zero is
+    /// untouched, and the range is deliberately small — this is for a horizon
+    /// that is out by a degree or two, not for turning a picture on its side.
+    var straighten: Double = 0
+
+    static let straightenRange: ClosedRange<Double> = -15...15
 
     static let neutral = PhotoEditRecipe()
     var isNeutral: Bool { self == .neutral }
@@ -637,6 +643,7 @@ struct PhotoEditRecipe: Codable, Equatable {
         if !tone.isNeutral { parts.append(tone.summary) }
         let active = masks.filter { $0.isEnabled && !$0.tone.isNeutral }.count
         if active > 0 { parts.append("\(active) mask\(active == 1 ? "" : "s")") }
+        if straighten != 0 { parts.append(String(format: "Straightened %+.1f°", straighten)) }
         if !crop.isFull { parts.append("Cropped") }
         return parts.isEmpty ? "No adjustments" : parts.joined(separator: " · ")
     }
@@ -659,6 +666,7 @@ struct PhotoEditRecipe: Codable, Equatable {
         // edited at all.
         masks = (try? container.decodeIfPresent([EditMask].self, forKey: .masks)) ?? []
         crop = (try? container.decodeIfPresent(CropRect.self, forKey: .crop)) ?? .full
+        straighten = (try? container.decodeIfPresent(Double.self, forKey: .straighten)) ?? 0
     }
 
     /// Whole-image tone, then each mask over the result, then geometry.
@@ -679,10 +687,86 @@ struct PhotoEditRecipe: Codable, Equatable {
             result = blend.outputImage ?? result
         }
 
+        // Before the crop, so the crop frames what the straightened photo
+        // actually shows rather than a rectangle that is itself tilted.
+        if straighten != 0 {
+            result = Self.straightened(result, degrees: straighten)
+        }
+
         if applyCrop, !crop.isFull {
             result = Self.cropped(result, to: crop)
         }
         return result
+    }
+
+    /// Rotates about the centre and takes back the largest rectangle of the
+    /// original shape that still fits inside.
+    ///
+    /// Rotating a rectangle leaves four empty triangles at the corners. Filling
+    /// them would be inventing pixels; leaving them would put transparent
+    /// wedges into a photograph. So the photo is scaled into what remains,
+    /// which is what every straighten control does and why straightening always
+    /// costs a little reach at the edges.
+    static func straightened(_ image: CIImage, degrees: Double) -> CIImage {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0, degrees != 0 else { return image }
+
+        let radians = degrees * .pi / 180
+        let centre = CGPoint(x: extent.midX, y: extent.midY)
+        let rotation = CGAffineTransform(translationX: centre.x, y: centre.y)
+            .rotated(by: radians)
+            .translatedBy(x: -centre.x, y: -centre.y)
+        let rotated = image.transformed(by: rotation)
+
+        let inner = largestInteriorSize(width: extent.width,
+                                        height: extent.height,
+                                        radians: radians)
+        let rect = CGRect(x: centre.x - inner.width / 2,
+                          y: centre.y - inner.height / 2,
+                          width: inner.width,
+                          height: inner.height)
+
+        // Scaled back up so straightening does not silently shrink the photo —
+        // the frame keeps its pixel dimensions and simply reaches less far.
+        let scale = extent.width / max(inner.width, 1)
+        return rotated
+            .cropped(to: rect)
+            .transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    }
+
+    /// The largest rectangle of the same proportions that fits inside a `width`
+    /// by `height` rectangle rotated about its centre by `radians`.
+    ///
+    /// Same *shape*, not merely the largest area. The textbook "largest
+    /// rectangle in a rotated rectangle" is unconstrained and comes out a
+    /// different shape — 1.63 rather than 1.5 for a 3:2 photo at 5° — which
+    /// would silently reshape the frame. Straightening should cost reach at the
+    /// edges and nothing else; changing the proportions is a crop, and the crop
+    /// is the user's to make.
+    ///
+    /// Solved rather than searched. A centred rectangle half `X` wide and half
+    /// `Y` tall fits when its corners, turned back by the same angle, stay
+    /// inside the original:
+    ///
+    ///     X·cos + Y·sin ≤ width/2
+    ///     X·sin + Y·cos ≤ height/2
+    ///
+    /// Holding `Y = X / ratio` leaves two bounds on `X`, and the smaller wins.
+    static func largestInteriorSize(width: CGFloat,
+                                    height: CGFloat,
+                                    radians: CGFloat) -> CGSize {
+        guard width > 0, height > 0 else { return .zero }
+
+        let ratio = width / height
+        let cosA = abs(cos(radians))
+        let sinA = abs(sin(radians))
+
+        let byWidth = (width / 2) / (cosA + sinA / ratio)
+        let byHeight = (height / 2) / (sinA + cosA / ratio)
+        let half = min(byWidth, byHeight)
+
+        return CGSize(width: half * 2, height: half * 2 / ratio)
     }
 
     private static func cropped(_ image: CIImage, to crop: CropRect) -> CIImage {

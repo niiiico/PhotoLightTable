@@ -26,6 +26,8 @@ struct TouchEditor: View {
     @State private var brushRadius = BrushStroke.defaultRadius
     @State private var isErasing = false
     @State private var brushHistory = BrushHistory()
+    @State private var isFindingHorizon = false
+    @State private var horizonNote: String?
     /// The red wash follows what is being judged: the mask's extent while the
     /// brush is in hand, the photograph itself once the sliders are in use.
     @State private var showsBrushPaint = true
@@ -322,11 +324,69 @@ struct TouchEditor: View {
             }
             .pickerStyle(.menu)
 
+            // Straighten sits with the crop because it is the same act —
+            // deciding where the frame sits — and because it takes reach off
+            // the edges, which only makes sense beside the control showing them.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Straighten").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "%+.1f°", edit.recipe.straighten))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button {
+                        autoStraighten()
+                    } label: {
+                        if isFindingHorizon {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Text("Auto").font(.caption)
+                        }
+                    }
+                    .disabled(isFindingHorizon)
+                }
+                Slider(value: Binding(get: { edit.recipe.straighten },
+                                      set: { setStraighten($0) }),
+                       in: PhotoEditRecipe.straightenRange)
+
+                if let horizonNote {
+                    Text(horizonNote).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             Button("Reset Crop") {
                 edit.recipe.crop = .full
+                edit.recipe.straighten = 0
+                horizonNote = nil
                 renderForCurrentTool()
             }
-            .disabled(edit.recipe.crop.isFull)
+            .disabled(edit.recipe.crop.isFull && edit.recipe.straighten == 0)
+        }
+    }
+
+    private func setStraighten(_ degrees: Double) {
+        horizonNote = nil
+        edit.recipe.straighten = degrees
+        renderForCurrentTool()
+    }
+
+    /// A photo with no horizon is not a failure, so it is said quietly. Vision
+    /// finds nothing in a level photo just as it finds nothing in a picture of
+    /// a wall, and cannot tell the two apart.
+    private func autoStraighten() {
+        guard let displayed = edit.preview,
+              let source = CIImage.from(displayed) else { return }
+        isFindingHorizon = true
+        horizonNote = nil
+        Task {
+            let found = await AutoStraighten.angle(in: source)
+            isFindingHorizon = false
+            if let found {
+                edit.recipe.straighten = found
+                renderForCurrentTool()
+            } else {
+                horizonNote = "No horizon found — straighten by hand."
+            }
         }
     }
 

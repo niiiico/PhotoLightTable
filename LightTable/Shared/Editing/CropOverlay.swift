@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Aspect ratios offered while cropping. `nil` leaves the rect free.
 enum CropAspect: String, CaseIterable, Identifiable {
-    case free, original, square, threeTwo, fourThree, sixteenNine
+    case free, original, square, threeTwo, fourThree, sixteenNine, sixTwo
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum CropAspect: String, CaseIterable, Identifiable {
         case .threeTwo: return "3:2"
         case .fourThree: return "4:3"
         case .sixteenNine: return "16:9"
+        case .sixTwo: return "6:2"
         }
     }
 
@@ -27,6 +28,7 @@ enum CropAspect: String, CaseIterable, Identifiable {
         case .threeTwo: return 3.0 / 2
         case .fourThree: return 4.0 / 3
         case .sixteenNine: return 16.0 / 9
+        case .sixTwo: return 6.0 / 2
         }
     }
 }

@@ -312,7 +312,7 @@ This is the same non-destructive promise the culling side makes.
 | Tone | exposure, contrast, black point, saturation, vibrance, highlights, shadows, warmth, tint, definition, noise reduction |
 | Spatial | blur (negative sharpens, positive blurs) |
 | Masks | linear gradient, radial gradient, brush |
-| Frame | crop, white-balance eyedropper |
+| Frame | crop, straighten, white-balance eyedropper |
 
 Every adjustment is neutral at zero and runs -1…1, apart from exposure in stops
 and noise reduction which is unipolar — there is no negative amount of noise to
@@ -333,6 +333,35 @@ Strokes undo and redo one at a time, from the brush panel or with `Z` and ⇧`Z`
 Clearing goes on the same stack, so an accidental Clear comes back. Order is
 preserved rather than reversed: an erase stroke composites out what was painted
 before it, so replaying strokes backwards would give a different mask.
+
+### Straighten
+
+A slider in the crop section, ±15°, with **Auto** beside it. Straighten belongs
+with the crop because it is the same act — deciding where the frame sits — and
+because it costs reach at the edges, which only makes sense next to the control
+that shows them.
+
+Rotating a rectangle leaves four empty triangles at the corners. Filling them
+would be inventing pixels and leaving them would put transparent wedges into a
+photograph, so the photo is scaled into the largest rectangle **of its own
+proportions** that still fits. That last part matters: the textbook "largest
+rectangle in a rotated rectangle" is unconstrained and comes out a different
+shape — 1.63 rather than 1.5 for a 3:2 photo at 5° — which would silently
+reshape the frame. Straightening should cost reach and nothing else; changing
+the proportions is a crop, and the crop is yours to make.
+
+**Auto** uses `VNDetectHorizonRequest`, which has been in Vision since macOS
+10.13. The header says only "use the transform or angle to upright the image",
+so the sign was *measured* against drawn horizons of known tilt rather than
+assumed: Vision reports the negative of the tilt, which is already the
+correction. Getting that backwards would have doubled a tilt instead of removing
+it, and looked plausible on any nearly-level photo.
+
+Two things fell out of measuring it. Vision finds **no horizon at all** in a
+level photo — indistinguishable from finding none in a picture of a wall — so
+Auto says "no horizon found" rather than claiming success. And its answers
+quantize to about an eighth of a degree, so Auto gets you close and the slider
+finishes the job.
 
 Crops are stored **normalized** rather than in pixels, because the same recipe
 has to render identically against a display-size preview and a full-resolution
