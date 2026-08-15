@@ -220,6 +220,37 @@ struct LightTableView: View {
         }
     }
 
+    /// The stack this photo belongs to, when it is in one that is showing.
+    ///
+    /// Resolved through the family rather than taken as the photo's own id: an
+    /// opened stack puts its variants on the table beside their source, and
+    /// stacking them back up is just as reasonable a thing to ask of a variant
+    /// as of the photo it came from.
+    private func stackRoot(of id: String) -> String? {
+        let root = ratings.rootAsset(of: id)
+        return stackSizes[root] == nil ? nil : root
+    }
+
+    private func toggleStack(containing id: String) {
+        guard let root = stackRoot(of: id) else { return }
+        let isClosing = app.expandedStacks.contains(root)
+        app.toggleStack(root)
+        guard isClosing else { return }
+
+        // Closing takes every member but the source off the table, so anything
+        // focused or selected inside the family would be left pointing at a
+        // photo that is no longer there — the keyboard would move from nowhere
+        // and a verdict would land on something invisible.
+        let family = Set(ratings.family(of: root))
+        if let focusID = app.focusID, family.contains(focusID) {
+            app.focusID = root
+        }
+        if app.selectedIDs.contains(where: { family.contains($0) }) {
+            app.selectedIDs.subtract(family)
+            app.selectedIDs.insert(root)
+        }
+    }
+
     /// The photo as it stands, adjustments included.
     ///
     /// There is no editing session open in the grid, so the recipe is read back
@@ -319,7 +350,7 @@ struct LightTableView: View {
                       variantLabel: ratings.variantLabel(for: item.id),
                       stackCount: stackSizes[item.id] ?? 0,
                       isStackExpanded: app.expandedStacks.contains(item.id),
-                      onToggleStack: { app.toggleStack(item.id) })
+                      onToggleStack: { toggleStack(containing: item.id) })
             .equatable()
             .id(item.id)
             .background(
@@ -375,12 +406,12 @@ struct LightTableView: View {
         if let current = currentEvent {
             Button("Remove from “\(current.name)”") { remove(targets, from: current) }
         }
-        if let count = stackSizes[item.id] {
+        if let root = stackRoot(of: item.id), let count = stackSizes[root] {
             Divider()
-            Button(app.expandedStacks.contains(item.id)
+            Button(app.expandedStacks.contains(root)
                    ? "Stack These \(count) Versions  (S)"
                    : "Show All \(count) Versions  (S)") {
-                app.toggleStack(item.id)
+                toggleStack(containing: item.id)
             }
         }
         Divider()
@@ -498,8 +529,8 @@ struct LightTableView: View {
         case "s":
             // Only the focused cell: opening every stack in a wide selection
             // would rearrange the grid under the cursor.
-            guard let focusID = app.focusID, stackSizes[focusID] != nil else { return .ignored }
-            app.toggleStack(focusID)
+            guard let focusID = app.focusID, stackRoot(of: focusID) != nil else { return .ignored }
+            toggleStack(containing: focusID)
             return .handled
         case "r":
             app.selectRelated(in: items)

@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-15 - Stack a family back up from any of its members, not only from the photo they were made from, moving focus and selection to the source first so neither is left pointing at a photo that is no longer showing.
+
 2026-08-15 - Fix Split and Duplicate throwing away the photo's own edit: with no editing session open, the grid passed a neutral recipe, so a split of an edited photo came out built from the original pixels. Add a 6:2 crop ratio, and a straighten slider with Auto — the photo is scaled into the largest rectangle of its own proportions that still fits the rotation, and Auto reads the horizon with Vision, whose sign convention was measured against drawn tilts rather than assumed.
 
 2026-08-13 - Ship the iOS half of ADR 008 and cut the first iOS release: the app polls latest.json on launch and on returning to the foreground, and offers a sheet whose button opens the itms-services link. AppBuild is extracted from BuildStamp so the numbers displayed and the numbers compared come from one reader. Both platforms are now published: 0.2 (66) for iOS, 0.2 (63) for macOS.

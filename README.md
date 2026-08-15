@@ -444,7 +444,13 @@ are actually on screen have frames, so a family scrolled half out of view is
 drawn around the part that is showing.
 
 `S` acts on the focused cell alone rather than the selection, since opening
-every stack in a wide selection would rearrange the grid under the cursor.
+every stack in a wide selection would rearrange the grid under the cursor. It
+works from **any member** of an opened family, not only from the photo they were
+made from — stacking back up is as reasonable a thing to ask of a variant.
+
+Closing a stack moves focus and selection to the source first. Otherwise they
+would be left pointing at a photo that is no longer on the table: the keyboard
+would move from nowhere, and a verdict would land on something invisible.
 
 Verdicts still apply to what is *selected*, which for a closed stack is the one
 photo standing for it. Rejecting a stack does not reject the versions inside it:

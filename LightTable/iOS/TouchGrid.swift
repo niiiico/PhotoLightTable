@@ -78,7 +78,7 @@ struct TouchGrid: View {
                       variantLabel: ratings.variantLabel(for: item.id),
                       stackCount: stackSizes[item.id] ?? 0,
                       isStackExpanded: app.expandedStacks.contains(item.id),
-                      onToggleStack: { app.toggleStack(item.id) })
+                      onToggleStack: { toggleStack(containing: item.id) })
         .equatable()
         .background(
             GeometryReader { geo in
@@ -103,6 +103,28 @@ struct TouchGrid: View {
                 app.selectedIDs = []
             }
             toggle(item)
+        }
+    }
+
+    /// Stacking back up is as reasonable a thing to ask of a variant as of the
+    /// photo it came from, so the family is resolved rather than the tapped
+    /// photo's own id being used.
+    private func toggleStack(containing id: String) {
+        let root = ratings.rootAsset(of: id)
+        guard stackSizes[root] != nil else { return }
+        let isClosing = app.expandedStacks.contains(root)
+        app.toggleStack(root)
+        guard isClosing else { return }
+
+        // Closing takes the members off the table; anything focused or selected
+        // inside the family would be pointing at a photo that is gone.
+        let family = Set(ratings.family(of: root))
+        if let focusID = app.focusID, family.contains(focusID) {
+            app.focusID = root
+        }
+        if app.selectedIDs.contains(where: { family.contains($0) }) {
+            app.selectedIDs.subtract(family)
+            app.selectedIDs.insert(root)
         }
     }
 
