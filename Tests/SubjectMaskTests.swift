@@ -149,6 +149,35 @@ struct SubjectMaskTests {
         #expect(gray(at: CGPoint(x: 5, y: 5)) > 200, "and the background in")
     }
 
+    @Test("A selection hugs its edge instead of haloing")
+    func edgeIsTight() {
+        // The brush's default feathering blurs by about a tenth of the short
+        // side. On a painted edge that is the point; on a silhouette it throws
+        // a wide halo, which is what raising highlights on a selected subject
+        // showed up as. A seeded selection therefore starts unfeathered.
+        var mask = EditMask()
+        mask.kind = .brush
+        mask.softness = 0
+        mask.region = region(side: 64, discRadius: 16)
+
+        let extent = CGRect(x: 0, y: 0, width: 200, height: 200)
+        let rendered = mask.maskImage(for: extent)!
+        let context = CIContext()
+        func gray(at point: CGPoint) -> UInt8 {
+            var pixel = [UInt8](repeating: 0, count: 4)
+            context.render(rendered, toBitmap: &pixel, rowBytes: 4,
+                           bounds: CGRect(x: point.x, y: point.y, width: 1, height: 1),
+                           format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+            return pixel[0]
+        }
+
+        // The disc's edge lands at 50 in this 200-point frame. Ten points
+        // either side of it should already be solidly in and solidly out —
+        // with the brush's default feathering, both would be mid-grey.
+        #expect(gray(at: CGPoint(x: 100, y: 60)) > 200, "inside the subject")
+        #expect(gray(at: CGPoint(x: 100, y: 40)) < 55, "just outside it")
+    }
+
     @Test("An erase stroke takes a bite out of the selection")
     func strokesEditTheSelection() {
         // The point of storing it as part of a brush mask: what the model chose

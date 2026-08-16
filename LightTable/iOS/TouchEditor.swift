@@ -693,6 +693,11 @@ struct TouchEditor: View {
                 var mask = EditMask()
                 mask.kind = .brush
                 mask.region = region
+                // No feathering. The brush's usual 0.35 blurs by about a
+                // tenth of the short side — right for a painted edge, and a
+                // wide halo around a silhouette that already has an edge of
+                // its own. Raise it by hand if a soft join is wanted.
+                mask.softness = 0
                 edit.recipe.masks.append(mask)
                 selectedMaskID = mask.id
                 renderForCurrentTool()
