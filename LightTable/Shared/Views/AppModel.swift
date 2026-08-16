@@ -92,6 +92,16 @@ final class AppModel: ObservableObject {
     /// every variant across the grid made a good take look like a long one.
     @Published var expandedStacks: Set<String> = []
 
+    /// Opens the family a newly made photo belongs to.
+    ///
+    /// Stacked is the right default for a library being read, and the wrong one
+    /// for a photo made a second ago: it would be filed away before it had been
+    /// looked at, and arrowing on from its source would step over it to the
+    /// next photograph entirely.
+    func revealFamily(of rootID: String) {
+        expandedStacks.insert(rootID)
+    }
+
     func toggleStack(_ rootID: String) {
         if expandedStacks.contains(rootID) {
             expandedStacks.remove(rootID)

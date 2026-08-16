@@ -1237,6 +1237,7 @@ struct LoupeView: View {
                                                        context: modelContext,
                                                        library: library)
                 ratings.reloadVariants()
+                app.revealFamily(of: ratings.rootAsset(of: current.id))
                 edit.discardChanges()
             } catch {
                 editError = error.localizedDescription
@@ -1257,6 +1258,7 @@ struct LoupeView: View {
                                                context: modelContext,
                                                library: library)
                 ratings.reloadVariants()
+                app.revealFamily(of: ratings.rootAsset(of: photoID))
                 // Writing the new photo takes a moment, and discarding is about
                 // the photo the treatment came off — not whichever one is open
                 // by the time it finishes.

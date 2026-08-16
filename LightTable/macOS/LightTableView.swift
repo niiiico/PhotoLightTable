@@ -189,6 +189,7 @@ struct LightTableView: View {
                                                    context: context,
                                                    library: library)
                 ratings.reloadVariants()
+                app.revealFamily(of: ratings.rootAsset(of: item.id))
             } catch {
                 actionError = error.localizedDescription
             }
@@ -270,6 +271,7 @@ struct LightTableView: View {
                                                            context: context,
                                                            library: library)
                 ratings.reloadVariants()
+                app.revealFamily(of: ratings.rootAsset(of: item.id))
             } catch {
                 actionError = error.localizedDescription
             }

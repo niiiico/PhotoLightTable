@@ -440,6 +440,12 @@ treatments are that same thing seen another way — spreading them side by side
 made a good take look like a long one, and made the day's real shape harder to
 read the more you worked.
 
+A family **opens itself** when you add to it — saving a version, duplicating,
+splitting. Stacked is the right default for a library being read and the wrong
+one for a photo made a second ago: it would be filed away before you had looked
+at it, and arrowing on from its source would step over it to the next
+photograph.
+
 The count is the control. Click it, press `S`, or use the context menu to open
 the family out in place; the same again stacks it back. Nothing is hidden
 permanently and nothing is deleted — a closed stack is a way of looking, not a
