@@ -33,24 +33,38 @@ enum PhotoVariants {
                        label: String,
                        context: ModelContext?,
                        library: PhotoLibraryService?) async throws -> String {
-        // Every part the photo is made of, not just its main image. Copying
-        // only `.photo` turned a duplicated Live Photo into a still and would
-        // drop the RAW half of a RAW+JPEG pair — the resource header warns
-        // that full fidelity means preserving every resource.
-        let sources = try await copiedResources(of: item.asset)
-        defer { for file in sources { try? FileManager.default.removeItem(at: file.url) } }
-        guard sources.contains(where: { $0.type == .photo }) else {
+        // The main image has to be the one the recipe was written against, and
+        // that is what PhotoKit hands the editor: `fullSizeImageURL`.
+        //
+        // Taking the `.photo` resource instead looks equivalent and is not. For
+        // a photo already edited in Photos.app, PhotoKit gives the editor the
+        // *rendered* image — cropped, rotated, whatever was done to it — while
+        // the resource is still the untouched original underneath. A mask
+        // placed on a photo cropped to 9:16 was then stretched over the 3:4
+        // original, landing beside its subject rather than on it.
+        //
+        // Companions still come from the resources, which is what makes a
+        // duplicated Live Photo stay live.
+        guard let input = await PhotoEditSession.loadInput(for: item.asset),
+              let baseURL = input.fullSizeImageURL else {
             throw VariantError.noOriginal
         }
+        let companions = try await copiedResources(of: item.asset)
+        defer { for file in companions { try? FileManager.default.removeItem(at: file.url) } }
 
         var placeholder: PHObjectPlaceholder?
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
-            for source in sources {
+
+            let primary = PHAssetResourceCreationOptions()
+            // The URL belongs to PhotoKit's editing session; moving it would
+            // take it out from under the asset being copied.
+            primary.shouldMoveFile = false
+            request.addResource(with: .photo, fileURL: baseURL, options: primary)
+
+            for source in companions {
                 let options = PHAssetResourceCreationOptions()
                 options.originalFilename = source.originalFilename
-                // These are our own temporary copies, so letting PhotoKit take
-                // them saves writing every byte a second time.
                 options.shouldMoveFile = true
                 request.addResource(with: source.type, fileURL: source.url, options: options)
             }
@@ -164,16 +178,17 @@ enum PhotoVariants {
         let originalFilename: String
     }
 
-    /// The resources worth carrying into a copy.
+    /// The resources worth carrying into a copy, beside the main image.
     ///
-    /// `.photo` is the untouched original — not `.fullSizePhoto`, which is the
-    /// render of whatever edit the source currently has, and not
-    /// `.adjustmentData`, since a variant starts from the original and gets its
-    /// own recipe. `.alternatePhoto` is the RAW beside a JPEG, and
-    /// `.pairedVideo` is what makes a Live Photo live.
+    /// `.alternatePhoto` is the RAW beside a JPEG and `.pairedVideo` is what
+    /// makes a Live Photo live. `.photo` is deliberately not among them: the
+    /// main image comes from the editing input instead, so that it is the same
+    /// picture the recipe was written against. `.fullSizePhoto` and
+    /// `.adjustmentData` are the source's own edit, which a variant does not
+    /// inherit — it gets its own recipe.
     private static func isWorthCopying(_ type: PHAssetResourceType) -> Bool {
         switch type {
-        case .photo, .alternatePhoto, .pairedVideo, .video, .audio: return true
+        case .alternatePhoto, .pairedVideo, .video, .audio: return true
         default: return false
         }
     }
