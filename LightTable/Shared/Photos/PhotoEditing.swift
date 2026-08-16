@@ -441,6 +441,25 @@ struct MaskRegion: Codable, Equatable {
         guard let source = CGImageSourceCreateWithData(png as CFData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
+
+    /// The selection as something that can be laid over the photo: red where
+    /// selected, transparent everywhere else.
+    ///
+    /// The stored region is grayscale and fully opaque, so drawing it directly
+    /// would cover the picture in a grey rectangle. The mask has to become
+    /// alpha before it can become a highlight.
+    func overlayImage(tint: CIColor = CIColor(red: 1, green: 0.23, blue: 0.19)) -> CGImage? {
+        guard let decoded = decoded() else { return nil }
+        let mask = CIImage(cgImage: decoded)
+
+        let blend = CIFilter.blendWithMask()
+        blend.inputImage = CIImage(color: tint).cropped(to: mask.extent)
+        blend.backgroundImage = CIImage(color: .clear).cropped(to: mask.extent)
+        blend.maskImage = mask
+
+        guard let output = blend.outputImage else { return nil }
+        return CIContext().createCGImage(output, from: output.extent)
+    }
 }
 
 struct EditMask: Codable, Equatable, Identifiable {

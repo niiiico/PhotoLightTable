@@ -23,6 +23,9 @@ struct BrushOverlay: View {
     /// the extent of the mask is what is being judged.
     var onStrokeBegan: () -> Void = {}
 
+    /// The seeded selection, rendered once as something drawable. Rebuilt only
+    /// when the selection itself changes, not on every frame of a stroke.
+    @State private var regionOverlay: CGImage?
     @State private var strokeID: UUID?
     @State private var pointer: CGPoint?
     @State private var isPainting = false
@@ -70,6 +73,12 @@ struct BrushOverlay: View {
                     .allowsHitTesting(false)
                 }
             }
+            // Keyed on the selection itself: a stroke changes `mask` many times
+            // a second, and rebuilding this each time would decode a PNG per
+            // frame for a picture that has not moved.
+            .task(id: mask.region) {
+                regionOverlay = mask.region?.overlayImage()
+            }
         }
     }
 
@@ -82,6 +91,17 @@ struct BrushOverlay: View {
     /// when the extent is the thing being judged.
     private func paint(in frame: CGRect) -> some View {
         ZStack {
+            // The seeded selection sits under the strokes and inside the same
+            // compositing group, so an erase stroke cuts into it here exactly
+            // as it does in the rendered mask.
+            if let regionOverlay {
+                Image(decorative: regionOverlay, scale: 1)
+                    .resizable()
+                    .frame(width: frame.width, height: frame.height)
+                    .position(x: frame.midX, y: frame.midY)
+                    .opacity(isPainting ? 0.42 : 0.3)
+            }
+
             ForEach(mask.strokes) { stroke in
                 path(for: stroke, in: frame)
                     .stroke(Color.red.opacity(isPainting ? 0.42 : 0.3),
