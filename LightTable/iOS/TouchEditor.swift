@@ -360,6 +360,19 @@ struct TouchEditor: View {
                                       set: { setStraighten($0) }),
                        in: PhotoEditRecipe.straightenRange)
 
+                // Levelling costs reach at the edges; saying so is the
+                // difference between a trade and an unexplained crop.
+                if edit.recipe.straighten != 0 {
+                    let size = edit.preview?.size ?? CGSize(width: 3, height: 2)
+                    let kept = PhotoEditRecipe.largestInteriorSize(
+                        width: size.width, height: size.height,
+                        radians: edit.recipe.straighten * .pi / 180)
+                    Text(String(format: "Trims %.0f%% off the edges to stay rectangular",
+                                (1 - kept.width / max(size.width, 1)) * 100))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let horizonNote {
                     Text(horizonNote).font(.caption2).foregroundStyle(.secondary)
                 }
@@ -392,6 +405,9 @@ struct TouchEditor: View {
         Task {
             let found = await AutoStraighten.angle(in: source)
             isFindingHorizon = false
+            // The editor is opened on one photo here, but a version can be
+            // switched to underneath it, so a late result still has to check.
+            guard edit.isOpen(on: item.id) else { return }
             if let found {
                 edit.recipe.straighten = found
                 renderForCurrentTool()
@@ -690,6 +706,7 @@ struct TouchEditor: View {
             do {
                 let region = try await SubjectMask.region(
                     in: source, at: CGPoint(x: point.x, y: point.y))
+                guard edit.isOpen(on: item.id) else { return }
                 var mask = EditMask()
                 mask.kind = .brush
                 mask.region = region

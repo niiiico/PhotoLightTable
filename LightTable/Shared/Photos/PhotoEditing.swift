@@ -943,6 +943,14 @@ final class PhotoEditSession: ObservableObject {
     private var renderedBeforeCrop: Bool?
     /// Which asset `input` was obtained for, so a commit can refuse a mismatch.
     private var inputAssetID: String?
+
+    /// Whether this session is still open on the photo it was started for.
+    ///
+    /// Anything that finishes after an `await` has to ask. The session outlives
+    /// a single photo — moving to the next one re-begins it in place — so a
+    /// result that arrives late would otherwise be written into whichever
+    /// photo happens to be open when it lands.
+    func isOpen(on assetID: String) -> Bool { inputAssetID == assetID }
     /// Bumped per `begin`, so a slow load that finishes after a newer one is
     /// discarded instead of overwriting it.
     private var generation = 0

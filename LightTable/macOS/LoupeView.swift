@@ -817,13 +817,17 @@ struct LoupeView: View {
 
     private func selectSubject(at point: EditPoint) {
         guard let displayed = edit.preview ?? image,
-              let source = CIImage.from(displayed) else { return }
+              let source = CIImage.from(displayed),
+              let photoID = current?.id else { return }
         isFindingSubject = true
         Task {
             defer { isFindingSubject = false }
             do {
                 let region = try await SubjectMask.region(
                     in: source, at: CGPoint(x: point.x, y: point.y))
+                // Same reason as the horizon: a mask that arrives late must not
+                // attach itself to a different photograph.
+                guard edit.isOpen(on: photoID) else { return }
                 var mask = EditMask()
                 mask.kind = .brush
                 mask.region = region
@@ -1022,12 +1026,33 @@ struct LoupeView: View {
                 .onDoubleClick { setStraighten(0) }
                 .help("Double-click to reset")
 
+            // Levelling a photo costs reach at its edges — the picture is
+            // scaled into what is left after the rotation. Saying so is the
+            // difference between a trade and an unexplained crop.
+            if edit.recipe.straighten != 0 {
+                Text(lostToStraightening)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             if let horizonNote {
                 Text(horizonNote)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// How much of the frame levelling has taken, as a percentage of its width.
+    private var lostToStraightening: String {
+        let displayed = edit.preview ?? image
+        let width = displayed?.size.width ?? 3
+        let height = displayed?.size.height ?? 2
+        let kept = PhotoEditRecipe.largestInteriorSize(
+            width: width, height: height,
+            radians: edit.recipe.straighten * .pi / 180)
+        let lost = width > 0 ? (1 - kept.width / width) * 100 : 0
+        return String(format: "Trims %.0f%% off the edges to stay rectangular", lost)
     }
 
     private func setStraighten(_ degrees: Double) {
@@ -1041,7 +1066,7 @@ struct LoupeView: View {
     /// just as it finds nothing in a picture of a wall, and it cannot tell the
     /// two apart.
     private func autoStraighten() {
-        guard let displayed = edit.preview ?? image else { return }
+        guard let displayed = edit.preview ?? image, let photoID = current?.id else { return }
         isFindingHorizon = true
         horizonNote = nil
         Task {
@@ -1052,6 +1077,11 @@ struct LoupeView: View {
             }
             let found = await AutoStraighten.angle(in: source)
             isFindingHorizon = false
+            // Finding the horizon takes long enough to arrow to the next photo
+            // in the meantime, and the session follows the arrow. Without this
+            // the angle lands on whatever is open when it arrives, giving a
+            // photo an edit nobody made.
+            guard edit.isOpen(on: photoID) else { return }
             if let found {
                 edit.recipe.straighten = found
                 renderForCurrentTool()
@@ -1217,6 +1247,7 @@ struct LoupeView: View {
     private func saveVariant() {
         guard let current, let label = variantLabel else { return }
         let recipe = edit.recipe
+        let photoID = current.id
         variantLabel = nil
         Task {
             do {
@@ -1226,6 +1257,10 @@ struct LoupeView: View {
                                                context: modelContext,
                                                library: library)
                 ratings.reloadVariants()
+                // Writing the new photo takes a moment, and discarding is about
+                // the photo the treatment came off — not whichever one is open
+                // by the time it finishes.
+                guard edit.isOpen(on: photoID) else { return }
                 // The treatment now lives on the new photo, so the original
                 // goes back to how it was. Leaving it applied would mean the
                 // next save — or just walking to the next photo, which commits
