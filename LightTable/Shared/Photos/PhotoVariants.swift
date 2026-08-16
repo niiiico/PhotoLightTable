@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Photos
 import SwiftData
 
@@ -49,7 +50,17 @@ enum PhotoVariants {
               let baseURL = input.fullSizeImageURL else {
             throw VariantError.noOriginal
         }
-        let companions = try await copiedResources(of: item.asset)
+        // Companions can only come along when the base image is the original
+        // they belong to. When the source carries somebody else's edit the base
+        // is a render of it, and pairing that with the untouched RAW sibling or
+        // Live Photo video describes a photo that does not exist — PhotoKit
+        // refuses the whole thing with PHPhotosErrorInvalidResource.
+        //
+        // The still wins in that case. A duplicate that is not live is a
+        // disappointment; a duplicate that will not save at all is a bug.
+        let companions = baseIsTheOriginal(baseURL, of: item.asset)
+            ? try await copiedResources(of: item.asset)
+            : []
         defer { for file in companions { try? FileManager.default.removeItem(at: file.url) } }
 
         var placeholder: PHObjectPlaceholder?
@@ -176,6 +187,25 @@ enum PhotoVariants {
         let type: PHAssetResourceType
         let url: URL
         let originalFilename: String
+    }
+
+    /// Whether the editor's base image is the source's original file rather
+    /// than a render of it.
+    ///
+    /// Compared by pixel dimensions, which is a fact about both, rather than
+    /// inferred from whether the asset has adjustments — an edit that only
+    /// changed exposure leaves the dimensions alone and its companions would
+    /// still match.
+    private static func baseIsTheOriginal(_ baseURL: URL, of asset: PHAsset) -> Bool {
+        guard let primary = PHAssetResource.assetResources(for: asset)
+            .first(where: { $0.type == .photo }) else { return false }
+        guard let source = CGImageSourceCreateWithURL(baseURL as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any] else { return false }
+
+        let width = properties[kCGImagePropertyPixelWidth] as? Int
+        let height = properties[kCGImagePropertyPixelHeight] as? Int
+        return width == primary.pixelWidth && height == primary.pixelHeight
     }
 
     /// The resources worth carrying into a copy, beside the main image.

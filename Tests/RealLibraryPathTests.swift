@@ -206,4 +206,41 @@ struct RealLibraryPathTests {
             checked += 1
         }
     }
+
+    @MainActor
+    @Test("Making a variant of a real photo actually succeeds")
+    func variantCreationSucceeds() async throws {
+        // PHPhotosErrorInvalidResource, 3302: the resource set has to describe
+        // a photograph that could exist. Pairing a rendered base with the
+        // original's RAW sibling or Live Photo video does not, and no amount of
+        // geometry checking catches a request PhotoKit simply refuses.
+        //
+        // This makes a real photo in the library and removes it again.
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        try #require(status == .authorized, "needs full library access to write")
+
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        options.fetchLimit = 1
+        let assets = PHAsset.fetchAssets(with: options)
+        try #require(assets.count > 0, "no photos in the library")
+
+        var recipe = PhotoEditRecipe()
+        recipe.tone.exposure = 0.2
+
+        let item = PhotoItem(asset: assets.object(at: 0))
+        let newID = try await PhotoVariants.create(from: item,
+                                                   applying: recipe,
+                                                   label: "TestVariant",
+                                                   context: nil,
+                                                   library: nil)
+        #expect(!newID.isEmpty)
+
+        // Cleaned up, so running the tests does not litter the library.
+        if let created = PHAsset.fetchAssets(withLocalIdentifiers: [newID], options: nil).firstObject {
+            try? await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets([created] as NSArray)
+            }
+        }
+    }
 }
