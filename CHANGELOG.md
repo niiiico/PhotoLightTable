@@ -7,6 +7,8 @@ several major features.
 
 2026-08-15 - Fold the colour labels into a submenu in the grid's context menu, so making a photo — duplicate, split, remove a version — is not six items below the fold.
 
+2026-08-16 - Select a subject by tapping it, stored as the starting region of an ordinary brush mask so paint adds to it and erase takes away. Give the store a name of its own after another unsandboxed app claimed the shared default and took the ratings, events and families with it. Fix a run of faults on the variant path: a variant built from the original file rather than the picture the recipe was written against, a resource set PhotoKit refused, a family that stayed stacked over a photo just made, a grid that never took the keyboard back from the loupe, and an editor left in front of the original with the treatment apparently gone.
+
 2026-08-15 - Stack a family back up from any of its members, not only from the photo they were made from, moving focus and selection to the source first so neither is left pointing at a photo that is no longer showing.
 
 2026-08-15 - Fix Split and Duplicate throwing away the photo's own edit: with no editing session open, the grid passed a neutral recipe, so a split of an edited photo came out built from the original pixels. Add a 6:2 crop ratio, and a straighten slider with Auto — the photo is scaled into the largest rectangle of its own proportions that still fits the rotation, and Auto reads the horizon with Vision, whose sign convention was measured against drawn tilts rather than assumed.
