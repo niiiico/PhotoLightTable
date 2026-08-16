@@ -1207,6 +1207,25 @@ struct LoupeView: View {
     /// Committing first rather than discarding: the same rule as moving between
     /// photos with the arrow keys, so a version chip is not the one control
     /// that silently throws work away.
+    /// Moves to a photo that has just been made.
+    ///
+    /// Without this, saving a treatment leaves you looking at the original with
+    /// the adjustments gone — correct, since they moved to the new photo, and
+    /// indistinguishable from having lost the lot. Following it means the thing
+    /// on screen after saving is the thing that was saved.
+    ///
+    /// The wait is for the library to notice the new asset. `items` here is the
+    /// value this view was built with and will never change inside this task,
+    /// so the library is asked instead; focusing an id the grid does not have
+    /// yet would fall through to whatever happens to be first.
+    private func follow(_ assetID: String) async {
+        for _ in 0..<60 where !library.items.contains(where: { $0.id == assetID }) {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        guard library.items.contains(where: { $0.id == assetID }) else { return }
+        app.focusID = assetID
+    }
+
     private func openVersion(_ assetID: String) {
         guard let target = items.first(where: { $0.id == assetID }) else {
             editError = "That version isn't in the current selection."
@@ -1252,11 +1271,12 @@ struct LoupeView: View {
         variantLabel = nil
         Task {
             do {
-                try await PhotoVariants.create(from: current,
-                                               applying: recipe,
-                                               label: label.isEmpty ? "Variant" : label,
-                                               context: modelContext,
-                                               library: library)
+                let newID = try await PhotoVariants.create(
+                    from: current,
+                    applying: recipe,
+                    label: label.isEmpty ? "Variant" : label,
+                    context: modelContext,
+                    library: library)
                 ratings.reloadVariants()
                 app.revealFamily(of: ratings.rootAsset(of: photoID))
                 // Writing the new photo takes a moment, and discarding is about
@@ -1268,6 +1288,7 @@ struct LoupeView: View {
                 // next save — or just walking to the next photo, which commits
                 // — quietly changed the original too.
                 edit.discardChanges()
+                await follow(newID)
             } catch {
                 editError = error.localizedDescription
             }

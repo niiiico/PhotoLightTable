@@ -625,15 +625,26 @@ struct TouchEditor: View {
         variantLabel = nil
         Task {
             do {
-                try await PhotoVariants.create(from: item,
-                                               applying: recipe,
-                                               label: label.isEmpty ? "Variant" : label,
-                                               context: modelContext,
-                                               library: library)
+                let newID = try await PhotoVariants.create(
+                    from: item,
+                    applying: recipe,
+                    label: label.isEmpty ? "Variant" : label,
+                    context: modelContext,
+                    library: library)
                 ratings.reloadVariants()
                 // The treatment now lives on the new photo; the original goes
                 // back to how it was rather than staying quietly modified.
                 edit.discardChanges()
+
+                // And the editor follows it, so what is on screen after saving
+                // is what was saved rather than the original with the work
+                // apparently gone.
+                for _ in 0..<60 where !library.items.contains(where: { $0.id == newID }) {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                if library.items.contains(where: { $0.id == newID }) {
+                    onOpenVersion?(newID)
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }

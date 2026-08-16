@@ -421,6 +421,11 @@ step and buys everything: the variant is non-destructive like any other edit,
 reverts to the original in Photos, and reopens here with its adjustments intact.
 A flattened export would be a dead end.
 
+After saving, the editor **follows the new photo**. The original going back to
+how it was is correct — the treatment moved — but being left in front of it with
+the adjustments gone is indistinguishable from having lost them. What is on
+screen after saving is what was saved.
+
 Saving alongside also **puts the original back** to how the session found it.
 Without that the treatment stayed applied to the source, so the next save — or
 simply arrowing to the next photo, which commits — quietly changed the original
