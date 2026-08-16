@@ -25,6 +25,29 @@ private func region(side: Int = 64, discRadius: CGFloat = 20) -> MaskRegion {
     return MaskRegion(png: data)
 }
 
+/// A region with a white mark in one known corner. Deliberately asymmetric:
+/// the centred disc used elsewhere in these tests is unchanged by a flip or a
+/// mirror, so it cannot tell a correctly placed mask from a reflected one.
+private func cornerRegion(side: Int = 64) -> MaskRegion {
+    let context = CGContext(data: nil, width: side, height: side,
+                            bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceGray(),
+                            bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+    context.setFillColor(gray: 0, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+
+    // Drawn in Core Graphics' bottom-left space, so this square sits in the
+    // image's *top* left once it is read back the way an image is read.
+    context.setFillColor(gray: 1, alpha: 1)
+    context.fill(CGRect(x: 0, y: CGFloat(side) * 0.75,
+                        width: CGFloat(side) * 0.25, height: CGFloat(side) * 0.25))
+
+    let image = CIImage(cgImage: context.makeImage()!)
+    let data = CIContext().pngRepresentation(of: image, format: .L8,
+                                             colorSpace: CGColorSpaceCreateDeviceGray())!
+    return MaskRegion(png: data)
+}
+
 @Suite("Storing a subject selection")
 struct SubjectMaskTests {
     @Test("A region survives the round trip through a recipe")
@@ -176,6 +199,37 @@ struct SubjectMaskTests {
         // with the brush's default feathering, both would be mid-grey.
         #expect(gray(at: CGPoint(x: 100, y: 60)) > 200, "inside the subject")
         #expect(gray(at: CGPoint(x: 100, y: 40)) < 55, "just outside it")
+    }
+
+    @Test("A selection lands where it was, not mirrored or shifted")
+    func placement() {
+        // The failure this exists for: a mask drawn in the right shape but the
+        // wrong place, which on a photograph looks like a second subject
+        // floating beside the real one.
+        var mask = EditMask()
+        mask.kind = .brush
+        mask.softness = 0
+        mask.region = cornerRegion()
+
+        let extent = CGRect(x: 0, y: 0, width: 200, height: 200)
+        let rendered = mask.maskImage(for: extent)!
+        let context = CIContext()
+        func gray(atTopLeft point: CGPoint) -> UInt8 {
+            // Sampled in image terms — y down from the top — which is how the
+            // region was drawn and how anyone looking at the photo would
+            // describe it.
+            var pixel = [UInt8](repeating: 0, count: 4)
+            context.render(rendered, toBitmap: &pixel, rowBytes: 4,
+                           bounds: CGRect(x: point.x, y: extent.height - point.y - 1,
+                                          width: 1, height: 1),
+                           format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+            return pixel[0]
+        }
+
+        #expect(gray(atTopLeft: CGPoint(x: 25, y: 25)) > 200, "the mark is in the top left")
+        #expect(gray(atTopLeft: CGPoint(x: 175, y: 25)) < 55, "not the top right")
+        #expect(gray(atTopLeft: CGPoint(x: 25, y: 175)) < 55, "not the bottom left")
+        #expect(gray(atTopLeft: CGPoint(x: 175, y: 175)) < 55, "not the bottom right")
     }
 
     @Test("An erase stroke takes a bite out of the selection")

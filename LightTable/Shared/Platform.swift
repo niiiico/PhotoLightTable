@@ -31,8 +31,21 @@ extension PlatformImage {
 }
 
 extension CIImage {
+    /// The image's own pixels, not a re-rendering of it.
+    ///
+    /// `tiffRepresentation` draws the image into a box the size of its `size`,
+    /// which is in points. When those disagree with the backing pixels — as
+    /// they do for `PHContentEditingInput.displaySizeImage` on a photo taken
+    /// with the camera rotated — the result is squashed rather than merely
+    /// resampled, and every measurement taken from it is wrong in a way that
+    /// looks plausible. A subject mask captured through it came back at 9:16
+    /// for a 3:4 photograph.
     static func from(_ image: PlatformImage) -> CIImage? {
         #if os(macOS)
+        var rect = CGRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            return CIImage(cgImage: cgImage)
+        }
         guard let data = image.tiffRepresentation else { return nil }
         return CIImage(data: data)
         #else
