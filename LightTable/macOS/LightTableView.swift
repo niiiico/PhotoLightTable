@@ -101,6 +101,14 @@ struct LightTableView: View {
         .focusEffectDisabled()
         .onAppear { isGridFocused = true }
         .onTapGesture { isGridFocused = true }
+        // The loupe is an overlay, so the grid is never torn down and never
+        // appears again to reclaim the keyboard. Without this, closing the
+        // loupe leaves the focused cell plainly visible and every key dead
+        // until something is clicked — which reads as the focus being wrong
+        // rather than absent.
+        .onChange(of: app.isLoupePresented) { _, isPresented in
+            if !isPresented { isGridFocused = true }
+        }
         .onKeyPress(action: handleKey)
         .overlay {
             if items.isEmpty { emptyState }
