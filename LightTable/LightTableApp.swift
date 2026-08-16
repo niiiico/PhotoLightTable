@@ -4,6 +4,59 @@ import SwiftUI
 @main
 struct LightTableApp: App {
     private let container: ModelContainer
+
+    /// Where the store lives, named after this app.
+    ///
+    /// SwiftData's default configuration puts it at
+    /// `Application Support/default.store`. Inside a sandbox that is private to
+    /// the app; without one — which is where dropping the sandbox for Sparkle
+    /// left us ([ADR 008](../docs/adr-008-shipping-updates.md)) — it is a path
+    /// every unsandboxed app taking the default shares. One of them opened it,
+    /// migrated it to its own schema, and this app's ratings, events and
+    /// families went with it.
+    ///
+    /// A name of our own costs nothing and cannot collide.
+    static func storeURL() -> URL {
+        let directory = URL.applicationSupportDirectory.appending(path: "LightTable",
+                                                                 directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appending(path: "LightTable.store")
+
+        adoptDefaultStore(into: url)
+        return url
+    }
+
+    /// Carries an existing store over the first time this runs.
+    ///
+    /// Only when the shared file still holds *our* schema: on iOS the default
+    /// path is inside the container and perfectly safe, so there is real data
+    /// there to bring across, while on this Mac it may by now belong to another
+    /// app entirely. Copied rather than moved, so a mistake here costs nothing.
+    private static func adoptDefaultStore(into url: URL) {
+        let manager = FileManager.default
+        guard !manager.fileExists(atPath: url.path) else { return }
+
+        let old = URL.applicationSupportDirectory.appending(path: "default.store")
+        guard manager.fileExists(atPath: old.path), holdsOurSchema(old) else { return }
+
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(fileURLWithPath: old.path + suffix)
+            let destination = URL(fileURLWithPath: url.path + suffix)
+            guard manager.fileExists(atPath: source.path) else { continue }
+            try? manager.copyItem(at: source, to: destination)
+        }
+    }
+
+    /// Whether a store file is this app's rather than somebody else's.
+    private static func holdsOurSchema(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        // The table names appear as plain text in the file header region; this
+        // avoids opening the database, which is what would disturb an app that
+        // has it open.
+        guard let head = try? handle.read(upToCount: 512 * 1024) else { return false }
+        return head.range(of: Data("ZASSETRATING".utf8)) != nil
+    }
     @StateObject private var library: PhotoLibraryService
     @StateObject private var app = AppModel()
     @StateObject private var syncer: AlbumSyncer
@@ -17,7 +70,7 @@ struct LightTableApp: App {
 
     init() {
         let schema = Schema([AssetRating.self, LightTableEvent.self, AlbumBaseline.self, PhotoEditVersion.self, PhotoVariant.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let configuration = ModelConfiguration(schema: schema, url: Self.storeURL())
         let container: ModelContainer
         do {
             container = try ModelContainer(for: schema, configurations: [configuration])
