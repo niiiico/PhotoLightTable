@@ -311,13 +311,31 @@ This is the same non-destructive promise the culling side makes.
 | --- | --- |
 | Tone | exposure, contrast, black point, saturation, vibrance, highlights, shadows, warmth, tint, definition, noise reduction |
 | Spatial | blur (negative sharpens, positive blurs) |
-| Masks | linear gradient, radial gradient, brush |
+| Masks | linear gradient, radial gradient, brush, subject |
 | Frame | crop, straighten, white-balance eyedropper |
 
 Every adjustment is neutral at zero and runs -1…1, apart from exposure in stops
 and noise reduction which is unipolar — there is no negative amount of noise to
 remove. The UI is generated from the `Adjustment` enum rather than repeating a
 slider per parameter, so adding one is a case, not a view.
+
+### Selecting a subject
+
+**Subject…** in the Add Mask menu puts the photo into a tap mode; tap the thing
+you want and it becomes a mask. Several subjects in one photo cost nothing:
+Vision's `instanceMask` labels every pixel with the index of the instance it
+belongs to, so which one you meant is a lookup rather than a guess.
+
+What comes back is stored, not re-derived. It becomes the starting region of an
+ordinary **brush** mask, so everything the brush already does works on it —
+paint to add, erase to take away, undo a stroke at a time, feather with
+softness, invert to work on everything else instead. What the model chose is a
+starting point rather than the last word.
+
+Storing it costs about 4 KB. Vision analyses at 512 and upscales, so the small
+version *is* its answer — keeping the full-resolution mask would be storing an
+interpolation. It also means a future version of the model cannot quietly change
+an edit you already made, which re-deriving on every render would have allowed.
 
 Masks carry the same `ToneAdjustments` as the whole image, which is why blur
 works through a gradient for nothing. A mask's shape glows while you're changing

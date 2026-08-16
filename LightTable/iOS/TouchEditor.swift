@@ -33,6 +33,8 @@ struct TouchEditor: View {
     @State private var showsBrushPaint = true
     @State private var isShowingBefore = false
     @State private var isPickingWhitePoint = false
+    @State private var isPickingSubject = false
+    @State private var isFindingSubject = false
     @State private var errorMessage: String?
     @State private var variantLabel: String?
     @EnvironmentObject private var ratings: RatingStore
@@ -150,7 +152,16 @@ struct TouchEditor: View {
     private var overlays: some View {
         let aspect = edit.preview.map { $0.size.height > 0 ? $0.size.width / $0.size.height : 1 } ?? 1
 
-        if isPickingWhitePoint {
+        if isPickingSubject {
+            WhitePointPicker(
+                imageAspect: aspect,
+                prompt: "Tap the subject",
+                onPick: { point in
+                    isPickingSubject = false
+                    selectSubject(at: point)
+                },
+                onCancel: { isPickingSubject = false })
+        } else if isPickingWhitePoint {
             WhitePointPicker(
                 imageAspect: aspect,
                 onPick: { point in
@@ -188,7 +199,7 @@ struct TouchEditor: View {
     @State private var cropAspect: CropAspect = .free
 
     private var handlesAreActive: Bool {
-        tool == .crop || selectedMaskID != nil || isPickingWhitePoint
+        tool == .crop || selectedMaskID != nil || isPickingWhitePoint || isPickingSubject
     }
 
     private var panGesture: some Gesture {
@@ -396,6 +407,8 @@ struct TouchEditor: View {
                 Button("Linear Gradient") { addMask(.linear) }
                 Button("Radial Gradient") { addMask(.radial) }
                 Button("Brush") { addMask(.brush) }
+                Divider()
+                Button("Subject…") { beginPickingSubject() }
             } label: {
                 Label("Add Mask", systemImage: "plus")
             }
@@ -657,6 +670,36 @@ struct TouchEditor: View {
         guard let index = edit.recipe.masks.firstIndex(where: { $0.id == id }) else { return }
         change(&edit.recipe.masks[index])
         renderForCurrentTool()
+    }
+
+    /// A subject selection is a brush mask that arrives already painted, so
+    /// paint adds to it, erase takes away, and everything else about the brush
+    /// works on it unchanged.
+    private func beginPickingSubject() {
+        selectedMaskID = nil
+        isPickingWhitePoint = false
+        isPickingSubject = true
+    }
+
+    private func selectSubject(at point: EditPoint) {
+        guard let displayed = edit.preview,
+              let source = CIImage.from(displayed) else { return }
+        isFindingSubject = true
+        Task {
+            defer { isFindingSubject = false }
+            do {
+                let region = try await SubjectMask.region(
+                    in: source, at: CGPoint(x: point.x, y: point.y))
+                var mask = EditMask()
+                mask.kind = .brush
+                mask.region = region
+                edit.recipe.masks.append(mask)
+                selectedMaskID = mask.id
+                renderForCurrentTool()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func addMask(_ kind: EditMask.Kind) {

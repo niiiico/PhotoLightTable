@@ -31,12 +31,15 @@ struct LoupeView: View {
     @State private var cropAspect: CropAspect = .free
     @State private var selectedMaskID: UUID?
     @State private var isPickingWhitePoint = false
+    /// Waiting for a tap that says which subject to select.
+    @State private var isPickingSubject = false
     @State private var comparison: ComparisonMode = .off
     @State private var splitPosition: Double = 0.5
     @State private var brushRadius: Double = BrushStroke.defaultRadius
     @State private var isErasing = false
     @State private var brushHistory = BrushHistory()
     @State private var isFindingHorizon = false
+    @State private var isFindingSubject = false
     @State private var horizonNote: String?
     /// The red wash follows what is being judged: the mask's extent while the
     /// brush is in hand, the photograph itself once the sliders are in use.
@@ -132,6 +135,36 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
+            .overlay(alignment: .top) {
+                if isFindingSubject {
+                    // Subject lifting takes about half a second on a full-size
+                    // photo — long enough that silence reads as nothing having
+                    // happened.
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Finding the subject…").font(.caption)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .foregroundStyle(.white)
+                    .padding(.top, 26)
+                    .allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                if isPickingSubject, let displayed = edit.preview ?? image {
+                    WhitePointPicker(
+                        imageAspect: displayed.size.height > 0
+                            ? displayed.size.width / displayed.size.height : 1,
+                        prompt: "Click the subject — Esc to cancel",
+                        onPick: { point in
+                            isPickingSubject = false
+                            selectSubject(at: point)
+                        },
+                        onCancel: { isPickingSubject = false })
+                }
+            }
             .overlay {
                 if isPickingWhitePoint, let displayed = edit.preview ?? image {
                     WhitePointPicker(
@@ -432,6 +465,8 @@ struct LoupeView: View {
                                 Button("Linear Gradient") { addMask(.linear) }
                                 Button("Radial Gradient") { addMask(.radial) }
                                 Button("Brush") { addMask(.brush) }
+                                Divider()
+                                Button("Subject…") { beginPickingSubject() }
                             } label: {
                                 Image(systemName: "plus")
                             }
@@ -769,6 +804,37 @@ struct LoupeView: View {
         }
     }
 
+    /// Selecting a subject is a brush mask that starts out already painted, so
+    /// everything the brush can do to it afterwards works unchanged: add with
+    /// paint, take away with erase, undo a stroke at a time, feather with
+    /// softness, invert to work on everything else instead.
+    private func beginPickingSubject() {
+        isCropping = false
+        selectedMaskID = nil
+        isPickingWhitePoint = false
+        isPickingSubject = true
+    }
+
+    private func selectSubject(at point: EditPoint) {
+        guard let displayed = edit.preview ?? image,
+              let source = CIImage.from(displayed) else { return }
+        isFindingSubject = true
+        Task {
+            defer { isFindingSubject = false }
+            do {
+                let region = try await SubjectMask.region(
+                    in: source, at: CGPoint(x: point.x, y: point.y))
+                var mask = EditMask()
+                mask.kind = .brush
+                mask.region = region
+                edit.recipe.masks.append(mask)
+                selectMask(mask.id)
+            } catch {
+                editError = error.localizedDescription
+            }
+        }
+    }
+
     private func addMask(_ kind: EditMask.Kind) {
         var mask = EditMask()
         mask.kind = kind
@@ -1067,7 +1133,7 @@ struct LoupeView: View {
     }
 
     private var handlesAreActive: Bool {
-        isCropping || selectedMaskID != nil || isPickingWhitePoint
+        isCropping || selectedMaskID != nil || isPickingWhitePoint || isPickingSubject
     }
 
     /// Comparison, crop handles and mask handles each want the whole frame, so
@@ -1276,7 +1342,8 @@ struct LoupeView: View {
         case .rightArrow:
             navigate(by: 1); return .handled
         case .escape:
-            if isPickingWhitePoint { isPickingWhitePoint = false }
+            if isPickingSubject { isPickingSubject = false }
+            else if isPickingWhitePoint { isPickingWhitePoint = false }
             else if isCropping { setCropping(false) }
             else if isEditing { endEditing(commit: false) }
             else { close() }

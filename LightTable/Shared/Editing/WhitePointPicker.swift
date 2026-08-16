@@ -2,10 +2,16 @@ import SwiftUI
 
 /// Catches a click on the photo and reports where it landed, normalized.
 ///
-/// Works in the same top-left space the recipe stores, so the sample is taken
-/// from the point that was clicked whatever size the preview happens to be.
+/// Works in the same top-left space the recipe stores, so the point that was
+/// clicked is the point that is used, whatever size the preview happens to be.
+///
+/// Shared by the two things that ask you to point at something: sampling a
+/// neutral for white balance, and picking out a subject. Only the prompt
+/// differs, and a second copy of this would be a second place for the
+/// coordinate conversion to be got wrong.
 struct WhitePointPicker: View {
     let imageAspect: CGFloat
+    var prompt: String = "Click a neutral grey or white — Esc to cancel"
     let onPick: (EditPoint) -> Void
     let onCancel: () -> Void
 
@@ -58,7 +64,7 @@ struct WhitePointPicker: View {
                     .allowsHitTesting(false)
                 }
 
-                Text("Click a neutral grey or white — Esc to cancel")
+                Text(prompt)
                     .font(.caption)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)

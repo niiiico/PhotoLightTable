@@ -418,6 +418,31 @@ struct BrushStroke: Codable, Equatable, Identifiable {
 }
 
 /// A selective adjustment: where it applies, and what it does there.
+/// A selection stored as a small picture of itself.
+///
+/// Strokes cannot describe a silhouette, so a subject selection is kept as an
+/// image — but a tiny one. Vision analyses at 512×512 and upscales, so nothing
+/// is lost by keeping the small version and stretching it back at render time:
+/// storing the full-resolution mask would be storing an interpolation.
+///
+/// Roughly 4 KB of base64 in the recipe for a typical subject, which is the
+/// price of never having to ask the model the same question twice — and of an
+/// edit that cannot change under a future version of it.
+struct MaskRegion: Codable, Equatable {
+    /// A grayscale PNG, white where selected. `Data` rides in JSON as base64,
+    /// so nothing extra is needed to carry it.
+    var png: Data
+
+    /// Decoded fresh each time rather than cached. A 512-pixel grayscale PNG
+    /// costs about a millisecond, which is far below the render it is part of,
+    /// and a cache keyed by image data would need locking to be safe across the
+    /// render queue — real complexity for an imagined saving.
+    func decoded() -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(png as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+}
+
 struct EditMask: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
         case linear
@@ -449,6 +474,7 @@ struct EditMask: Codable, Equatable, Identifiable {
         tone = try container.decodeIfPresent(ToneAdjustments.self, forKey: .tone) ?? ToneAdjustments()
         start = try container.decodeIfPresent(EditPoint.self, forKey: .start) ?? EditPoint(x: 0.5, y: 0.15)
         end = try container.decodeIfPresent(EditPoint.self, forKey: .end) ?? EditPoint(x: 0.5, y: 0.55)
+        region = (try? container.decodeIfPresent(MaskRegion.self, forKey: .region)) ?? nil
         strokes = try container.decodeIfPresent([BrushStroke].self, forKey: .strokes) ?? []
         softness = try container.decodeIfPresent(Double.self, forKey: .softness) ?? Self.defaultSoftness
     }
@@ -459,6 +485,10 @@ struct EditMask: Codable, Equatable, Identifiable {
     var start = EditPoint(x: 0.5, y: 0.15)
     var end = EditPoint(x: 0.5, y: 0.55)
 
+    /// Brush only: a selection to start from, which the strokes then add to and
+    /// take away from. Seeded by tapping a subject; nil for a mask that was
+    /// only ever painted.
+    var region: MaskRegion?
     /// Brush only.
     var strokes: [BrushStroke] = []
     /// How far the painted edge feathers, as a fraction of the shorter side.
@@ -476,7 +506,9 @@ struct EditMask: Codable, Equatable, Identifiable {
 
     /// A brush with nothing painted has no effect, unlike a gradient which
     /// always covers something.
-    var isEmpty: Bool { kind == .brush && strokes.allSatisfy { $0.points.isEmpty } }
+    var isEmpty: Bool {
+        kind == .brush && region == nil && strokes.allSatisfy { $0.points.isEmpty }
+    }
 
     /// Geometry is stored against the *uncropped* image, so changing the crop
     /// reframes the photo without dragging the masks across its content.
@@ -490,7 +522,8 @@ struct EditMask: Codable, Equatable, Identifiable {
         let to = isInverted ? clear : solid
 
         if kind == .brush {
-            return Self.brushMask(strokes: strokes,
+            return Self.brushMask(region: region,
+                                  strokes: strokes,
                                   softness: softness,
                                   inverted: isInverted,
                                   extent: extent)
@@ -529,12 +562,22 @@ struct EditMask: Codable, Equatable, Identifiable {
     /// raster is capped and scaled up to the target extent, which is invisible
     /// because a painted mask is feathered anyway — the strokes themselves stay
     /// resolution-independent, which is what actually matters.
-    private static func brushMask(strokes: [BrushStroke],
+    /// Rasterises a brush mask: the seeded region first, then the strokes over
+    /// it.
+    ///
+    /// Built the right way up and inverted at the end, rather than each mark
+    /// being drawn in whichever shade inversion happens to call for. With only
+    /// strokes that was merely fiddly; with a region underneath them it would
+    /// mean inverting the picture before drawing on it, which is two ways of
+    /// saying the same thing and one of them would eventually be wrong.
+    private static func brushMask(region: MaskRegion?,
+                                  strokes: [BrushStroke],
                                   softness: Double,
                                   inverted: Bool,
                                   extent: CGRect) -> CIImage? {
         let painted = strokes.filter { !$0.points.isEmpty }
-        guard !painted.isEmpty, extent.width > 0, extent.height > 0 else { return nil }
+        guard region != nil || !painted.isEmpty,
+              extent.width > 0, extent.height > 0 else { return nil }
 
         let cap: CGFloat = 2048
         let scale = min(1, cap / max(extent.width, extent.height))
@@ -550,15 +593,21 @@ struct EditMask: Codable, Equatable, Identifiable {
                                       space: CGColorSpaceCreateDeviceGray(),
                                       bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
 
-        context.setFillColor(gray: inverted ? 1 : 0, alpha: 1)
+        context.setFillColor(gray: 0, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Stretched to the frame rather than fitted: the selection was analysed
+        // against the whole photo, so it already has the photo's proportions
+        // however square the buffer it came back in.
+        if let seeded = region?.decoded() {
+            context.draw(seeded, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+
         context.setLineCap(.round)
         context.setLineJoin(.round)
 
         for stroke in painted {
-            // Erasing paints the background value back, which is why inversion
-            // has to swap both ends rather than negate the result afterwards.
-            let paint: CGFloat = stroke.isErase ? (inverted ? 1 : 0) : (inverted ? 0 : 1)
+            let paint: CGFloat = stroke.isErase ? 0 : 1
             context.setStrokeColor(gray: paint, alpha: 1)
             context.setLineWidth(max(1, stroke.radius * 2 * reference))
 
@@ -582,6 +631,14 @@ struct EditMask: Codable, Equatable, Identifiable {
 
         guard let raster = context.makeImage() else { return nil }
         var image = CIImage(cgImage: raster)
+
+        // Inverted once, at the end. Blurring first and inverting after gives
+        // the same edge either way, so this costs nothing.
+        if inverted {
+            let invert = CIFilter.colorInvert()
+            invert.inputImage = image
+            image = invert.outputImage ?? image
+        }
 
         if softness > 0 {
             let blur = CIFilter.gaussianBlur()
