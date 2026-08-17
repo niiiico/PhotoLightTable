@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var showsShortcuts = false
     @State private var pendingImport: PhotosImport?
     @State private var pendingVariantRebuild: VariantRebuilder.Proposal?
+    @State private var isGoingToDate = false
+    @State private var targetDate = Date()
     @StateObject private var projection = LibraryProjection()
     /// Held here rather than left to the split view, so the loupe can fold the
     /// album list away while the window toolbar — and with it the system's own
@@ -120,6 +122,17 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .rebuildFromPhotos)) { _ in
             pendingImport = ratings.readImportFromPhotos()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .goToDate)) { _ in
+            // Seeded with the day you are looking at, so the picker opens where
+            // you are and a jump is a nudge rather than a date entered twice.
+            targetDate = focusedDate ?? projection.sections.first?.id ?? Date()
+            isGoingToDate = true
+        }
+        .sheet(isPresented: $isGoingToDate) {
+            GoToDateSheet(date: $targetDate,
+                          bounds: projection.dateBounds,
+                          onGo: { goToDate() })
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rebuildVariants)) { _ in
             pendingVariantRebuild = VariantRebuilder.proposal(for: library.items, ratings: ratings)
         }
@@ -189,6 +202,23 @@ struct ContentView: View {
     private var subtitle: String {
         guard app.hasActiveFilter else { return "" }
         return "Showing \(visibleItems.count) of \(scopedItems.count)"
+    }
+
+    /// The day of the photograph the keyboard is on.
+    private var focusedDate: Date? {
+        guard let focusID = app.focusID else { return nil }
+        return visibleItems.first { $0.id == focusID }?.creationDate
+    }
+
+    /// Lands the grid on the chosen day, or the nearest one that has anything
+    /// in it. Focus rather than a scroll: the grid already follows the focus,
+    /// and arrowing on from where you land is the point of arriving there.
+    private func goToDate() {
+        isGoingToDate = false
+        guard let index = DayJump.index(for: targetDate, in: projection.sections.map(\.id)),
+              let landing = projection.sections[index].items.first else { return }
+        app.focusID = landing.id
+        app.selectedIDs = [landing.id]
     }
 
     // MARK: - Toolbar
@@ -451,6 +481,7 @@ struct ShortcutsHelp: View {
         ("⌘ + click / drag", "Add to or remove from the selection"),
         ("Space / Return", "Open or close the loupe"),
         ("⌘A", "Select all"),
+        ("⌘G", "Go to a date"),
         ("Esc", "Clear selection"),
     ]
 

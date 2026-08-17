@@ -137,6 +137,13 @@ struct LightTableApp: App {
                 }
             }
 
+            CommandGroup(after: .textEditing) {
+                Button("Go to Date…") {
+                    NotificationCenter.default.post(name: .goToDate, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: .command)
+            }
+
             // Absent entirely unless asked for, rather than present and
             // disabled: a menu nobody can use is still a menu everybody reads.
             if Debug.isEnabled {

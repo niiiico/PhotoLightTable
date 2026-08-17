@@ -38,6 +38,10 @@ final class LibraryProjection: ObservableObject {
     /// ways, and a border per cell says the opposite.
     private(set) var openFamilies: [[String]] = []
 
+    /// The span the visible grid covers, oldest to newest, for anything that
+    /// has to offer a date inside it.
+    private(set) var dateBounds: ClosedRange<Date>?
+
     private var key: Key?
 
     func refresh(items: [PhotoItem],
@@ -70,6 +74,13 @@ final class LibraryProjection: ObservableObject {
         tally = ScopeTally(items: scoped, ratings: ratings)
         sections = PhotoLibraryService.groupByDay(visible,
                                                   oldestFirst: app.sortOrder == .oldestFirst)
+        // Taken from the ends rather than by scanning: the sections are already
+        // sorted, whichever way round.
+        if let first = sections.first?.id, let last = sections.last?.id {
+            dateBounds = min(first, last)...max(first, last)
+        } else {
+            dateBounds = nil
+        }
     }
 
     /// Collapses each family of photos sharing a pixel source into one cell,
