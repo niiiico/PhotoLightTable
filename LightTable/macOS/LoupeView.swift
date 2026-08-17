@@ -10,6 +10,11 @@ import SwiftUI
 /// something you have to mentally subtract.
 struct LoupeView: View {
     let items: [PhotoItem]
+    /// The album list beside the photograph. Kept open by default — knowing
+    /// which album you are working through is part of knowing what you are
+    /// looking at — and folded away from the button in the top bar, since the
+    /// window toolbar and its own sidebar control are hidden while reviewing.
+    @Binding var columns: NavigationSplitViewVisibility
 
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
@@ -260,6 +265,18 @@ struct LoupeView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    columns = columns == .detailOnly ? .all : .detailOnly
+                }
+            } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(columns == .detailOnly ? "Show the albums" : "Hide the albums")
+
             if currentPick != .unrated {
                 // Stated rather than announced. A verdict is worth knowing at a
                 // glance and is not the subject of the screen — heavy caps in a

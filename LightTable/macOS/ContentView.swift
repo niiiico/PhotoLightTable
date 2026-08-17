@@ -18,6 +18,10 @@ struct ContentView: View {
     @State private var pendingImport: PhotosImport?
     @State private var pendingVariantRebuild: VariantRebuilder.Proposal?
     @StateObject private var projection = LibraryProjection()
+    /// Held here rather than left to the split view, so the loupe can fold the
+    /// album list away while the window toolbar — and with it the system's own
+    /// sidebar control — is hidden.
+    @State private var columns = NavigationSplitViewVisibility.all
 
     var body: some View {
         // Recomputed only when something it actually depends on moves — notably
@@ -28,7 +32,7 @@ struct ContentView: View {
                            app: app,
                            ratings: ratings)
 
-        return NavigationSplitView {
+        return NavigationSplitView(columnVisibility: $columns) {
             SidebarView(events: events,
                         allItems: library.items,
                         editingEvent: Binding(
@@ -62,6 +66,16 @@ struct ContentView: View {
             // Bottom left, under the grid's own content — deliberately quiet,
             // and not in the way of anything.
             .overlay(alignment: .bottomLeading) { BuildStamp() }
+            // Over the detail column only, so the album list stays where it is
+            // while you review: which album you are working through is part of
+            // knowing what you are looking at, and it used to disappear the
+            // moment the loupe opened. It can still be folded away from inside.
+            .overlay {
+                if app.isLoupePresented {
+                    LoupeView(items: visibleItems, columns: $columns)
+                        .transition(.opacity)
+                }
+            }
             .toolbar { toolbarContent }
             // The window's content is a fixed dark grey whatever the appearance
             // preference says, and the title bar is translucent over it: in the
@@ -71,6 +85,9 @@ struct ContentView: View {
             // and its controls resolve against what they are actually on.
             .toolbarBackground(surfaces.rail, for: .windowToolbar)
             .toolbarColorScheme(.dark, for: .windowToolbar)
+            // The window keeps its name — it is what Mission Control and the
+            // Window menu show — but the bar draws ours instead of the system's.
+            .toolbar(removing: .title)
             .navigationTitle(title)
             .navigationSubtitle(subtitle)
         }
@@ -78,14 +95,6 @@ struct ContentView: View {
             EventEditor(mode: mode, items: library.items) { event in
                 app.selection = .event(event.persistentModelID)
                 scheduleEventAlbumSync()
-            }
-        }
-        // An overlay rather than a sheet, so the loupe covers the sidebar too and
-        // fills the whole window.
-        .overlay {
-            if app.isLoupePresented {
-                LoupeView(items: visibleItems)
-                    .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.12), value: app.isLoupePresented)
@@ -180,20 +189,38 @@ struct ContentView: View {
 
     // MARK: - Toolbar
 
+    /// A toolbar item with the system's slab taken off it and the dark scheme
+    /// put on.
+    ///
+    /// The slab is bright — brighter still once the light appearance lifts
+    /// everything under it — and each of these items already carries its own
+    /// shape: a menu, a slider, a run of chips. On the leading group it was
+    /// also clipping the first digits of the photo count with its rounded
+    /// corner. The scheme is forced because the bar is told to draw dark and
+    /// custom item content would otherwise resolve `.secondary` and friends
+    /// against the appearance preference instead — grey on grey.
+    @ToolbarContentBuilder
+    private func bareItem<Content: View>(placement: ToolbarItemPlacement = .automatic,
+                                         @ViewBuilder content: () -> Content) -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: placement) {
+                content().environment(\.colorScheme, .dark)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: placement) {
+                content().environment(\.colorScheme, .dark)
+            }
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         // Kept as one item so the group can't be split apart or reordered when
-        // the toolbar overflows. The system's own backing is dropped where it
-        // can be: this is a run of text and chips that carry their own shapes,
-        // and the rounded slab behind it clipped the first digits of the count.
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) { tallyBar }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .navigation) { tallyBar }
-        }
+        // the toolbar overflows.
+        bareItem(placement: .navigation) { tallyBar }
 
-        ToolbarItem {
+        bareItem {
             Menu {
                 Picker("Sort", selection: sortBinding) {
                     ForEach(PhotoSortOrder.allCases) { order in
@@ -214,7 +241,7 @@ struct ContentView: View {
                   : "Newest first — the default for the whole library")
         }
 
-        ToolbarItem {
+        bareItem {
             Slider(value: $app.thumbnailSize, in: 90...360) {
                 Text("Size")
             }
@@ -222,7 +249,7 @@ struct ContentView: View {
             .help("Thumbnail size")
         }
 
-        ToolbarItem {
+        bareItem {
             if let progress = clipboard.progressDescription {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
@@ -243,11 +270,11 @@ struct ContentView: View {
             }
         }
 
-        ToolbarItem {
+        bareItem {
             syncStatus
         }
 
-        ToolbarItem {
+        bareItem {
             Button {
                 showsShortcuts = true
             } label: {
@@ -257,13 +284,24 @@ struct ContentView: View {
         }
     }
 
-    /// How much is in the current selection, and the chips that filter it.
+    /// Which album, how much is in it, and the chips that filter it.
+    ///
+    /// The name is drawn here rather than left to the window's title, which is
+    /// laid down in a colour chosen for the appearance preference — near-black
+    /// over a bar that is deliberately dark, and no amount of telling the bar
+    /// its own scheme moved it far enough to read.
     private var tallyBar: some View {
         let tally = projection.tally
         return HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize()
+                .help(subtitle)
+
             Text("\(tally.total) photo\(tally.total == 1 ? "" : "s")")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.55))
                 .monospacedDigit()
                 .fixedSize()
                 .help(tally.total > 0

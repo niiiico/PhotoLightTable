@@ -49,7 +49,7 @@ struct Surfaces {
         /// The dark scheme with the lights up. Enough of a lift to feel like a
         /// different time of day, not enough to turn the surfaces white and put
         /// a photograph on a field brighter than itself.
-        static let light = dark.lifted(by: 0.12)
+        static let light = dark.lifted(by: 0.18)
 
         func lifted(by amount: Double) -> Levels {
             Levels(loupe: loupe + amount,
