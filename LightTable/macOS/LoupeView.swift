@@ -56,6 +56,18 @@ struct LoupeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.surfaces) private var surfaces
 
+    /// What a frame is within its family, for the strip: the name of the
+    /// treatment, and how many photographs share its pixels.
+    ///
+    /// The count goes on the photo standing for the family, as it does in the
+    /// grid. A variant carrying it as well would be claiming the same family
+    /// three times over in a row of three.
+    private func family(of id: String) -> (label: String?, count: Int) {
+        let isRoot = ratings.rootAsset(of: id) == id
+        return (ratings.variantLabel(for: id),
+                isRoot ? ratings.family(of: id).count : 1)
+    }
+
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
         return items.first { $0.id == focusID } ?? items.first
@@ -71,6 +83,7 @@ struct LoupeView: View {
                     FilmStrip(items: items,
                               currentID: current?.id,
                               ratingFor: { ratings.rating(for: $0) },
+                              familyFor: { family(of: $0) },
                               onSelect: { app.focusID = $0 },
                               onDismiss: { showsFilmStrip = false },
                               menuFor: { item in
@@ -1432,7 +1445,9 @@ struct LoupeView: View {
         // describe the pre-edit asset — the refreshed one has to be taken from
         // the service directly.
         let refreshed = library.items.first { $0.id == current.id } ?? current
-        image = await ThumbnailLoader.shared.fullImage(for: refreshed, maxDimension: 2400)
+        for await next in ThumbnailLoader.shared.fullImages(for: refreshed, maxDimension: 2400) {
+            image = next
+        }
     }
 
     // MARK: - State
@@ -1464,7 +1479,9 @@ struct LoupeView: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
-        image = await ThumbnailLoader.shared.fullImage(for: current, maxDimension: 2400)
+        for await next in ThumbnailLoader.shared.fullImages(for: current, maxDimension: 2400) {
+            image = next
+        }
     }
 
     // MARK: - Keyboard

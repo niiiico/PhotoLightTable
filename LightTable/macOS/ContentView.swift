@@ -59,6 +59,7 @@ struct ContentView: View {
                                        sections: projection.sections,
                                        stackSizes: projection.stackSizes,
                                        openFamilies: projection.openFamilies,
+                                       timeline: projection.timeline,
                                        events: events,
                                        onNewEvent: { editorMode = .create(seedIDs: $0) })
                     }

@@ -64,62 +64,98 @@ final class ThumbnailLoader: ObservableObject {
 
     func version(of assetID: String) -> Int { versions[assetID] ?? 0 }
 
-    func thumbnail(for item: PhotoItem, size: CGSize, mode: ThumbnailFillMode) async -> PlatformImage? {
+    /// Thumbnails as they arrive: the quick blurry one PhotoKit already has,
+    /// then the real one.
+    ///
+    /// It used to wait for the final image and throw the first away, which is
+    /// the right choice for judging a photograph and the wrong one for a grid
+    /// being scrolled: the wait was a field of empty rectangles where the
+    /// pictures should be. Both passes are yielded now — the first says which
+    /// photograph this is, the second is the one you look at.
+    ///
+    /// A stream rather than a value because the request is also cancelled when
+    /// nobody is listening any more: a cell scrolled past should stop competing
+    /// for decode time with the cells now on screen.
+    func thumbnails(for item: PhotoItem,
+                    size: CGSize,
+                    mode: ThumbnailFillMode) -> AsyncStream<PlatformImage> {
         let cacheKey = key(item.id, size, mode)
-        if let hit = cache.object(forKey: cacheKey) { return hit }
-
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.resizeMode = .fast
-        options.isNetworkAccessAllowed = true
-        options.isSynchronous = false
-
         let scale = Platform.screenScale
         let target = CGSize(width: size.width * scale, height: size.height * scale)
 
-        let image = await withCheckedContinuation { (continuation: CheckedContinuation<PlatformImage?, Never>) in
-            var resumed = false
-            manager.requestImage(for: item.asset,
-                                 targetSize: target,
-                                 contentMode: mode.contentMode,
-                                 options: options) { image, info in
-                // Opportunistic delivery calls back more than once; the degraded
-                // pass is discarded and only the final image resumes.
+        return AsyncStream { continuation in
+            if let hit = cache.object(forKey: cacheKey) {
+                continuation.yield(hit)
+                continuation.finish()
+                return
+            }
+
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+
+            let requestID = manager.requestImage(for: item.asset,
+                                                 targetSize: target,
+                                                 contentMode: mode.contentMode,
+                                                 options: options) { [weak self] image, info in
+                guard let image else {
+                    // No image and not a staging pass: nothing more is coming.
+                    if ((info?[PHImageResultIsDegradedKey] as? Bool) ?? false) == false {
+                        continuation.finish()
+                    }
+                    return
+                }
+                continuation.yield(image)
+
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                guard !isDegraded, !resumed else { return }
-                resumed = true
-                continuation.resume(returning: image)
+                guard !isDegraded else { return }
+                if let self {
+                    let cost = Int(target.width * target.height) * 4
+                    self.cache.setObject(image, forKey: cacheKey, cost: cost)
+                    self.cachedKeys[item.id, default: []].insert(cacheKey)
+                }
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                Task { @MainActor [weak self] in
+                    self?.manager.cancelImageRequest(requestID)
+                }
             }
         }
-
-        if let image {
-            let cost = Int(target.width * target.height) * 4
-            cache.setObject(image, forKey: cacheKey, cost: cost)
-            cachedKeys[item.id, default: []].insert(cacheKey)
-        }
-        return image
     }
 
-    /// Full-resolution-ish image for the loupe. Not cached — one at a time.
-    func fullImage(for item: PhotoItem, maxDimension: CGFloat) async -> PlatformImage? {
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
-        options.isNetworkAccessAllowed = true
-
+    /// Full-resolution-ish images for the loupe, as they arrive.
+    ///
+    /// Opportunistic for the same reason the grid is: arrowing through a take,
+    /// a screen that goes empty between frames reads as the app having stopped,
+    /// and the low-resolution pass arrives in a few milliseconds. The final
+    /// image is what any judgement is made on, and it always follows.
+    func fullImages(for item: PhotoItem, maxDimension: CGFloat) -> AsyncStream<PlatformImage> {
         let scale = Platform.screenScale
         let target = CGSize(width: maxDimension * scale, height: maxDimension * scale)
 
-        return await withCheckedContinuation { (continuation: CheckedContinuation<PlatformImage?, Never>) in
-            var resumed = false
-            manager.requestImage(for: item.asset,
-                                 targetSize: target,
-                                 contentMode: .aspectFit,
-                                 options: options) { image, info in
+        return AsyncStream { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .exact
+            options.isNetworkAccessAllowed = true
+
+            let requestID = manager.requestImage(for: item.asset,
+                                                 targetSize: target,
+                                                 contentMode: .aspectFit,
+                                                 options: options) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                guard !isDegraded, !resumed else { return }
-                resumed = true
-                continuation.resume(returning: image)
+                if let image { continuation.yield(image) }
+                if !isDegraded { continuation.finish() }
+            }
+
+            continuation.onTermination = { _ in
+                Task { @MainActor [weak self] in
+                    self?.manager.cancelImageRequest(requestID)
+                }
             }
         }
     }

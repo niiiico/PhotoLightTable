@@ -44,6 +44,16 @@ struct ThumbnailCell: View, Equatable {
 
     private var isActive: Bool { isSelected || isFocused }
 
+    /// What to draw right now.
+    ///
+    /// The cache is read during layout rather than waited for: a task, however
+    /// short, is at least a frame away, and scrolling back over photographs
+    /// already seen was a wave of empty cells filling in behind the pointer.
+    private var displayed: PlatformImage? {
+        image ?? ThumbnailLoader.shared.cachedThumbnail(
+            for: item, size: CGSize(width: size, height: size), mode: fillMode)
+    }
+
     /// Selected cells inset their image to reveal a coloured mat behind it.
     /// Shrinking the photo is what makes selection readable at a glance, in a
     /// way a border drawn over a busy photo never is.
@@ -99,9 +109,10 @@ struct ThumbnailCell: View, Equatable {
             // loader is shared, so wrapping it per cell made every thumbnail
             // observe it for no benefit.
             capture = CaptureKindCache.kind(for: item)
-            image = await ThumbnailLoader.shared.thumbnail(for: item,
-                                           size: CGSize(width: size, height: size),
-                                           mode: fillMode)
+            for await next in ThumbnailLoader.shared.thumbnails(
+                for: item, size: CGSize(width: size, height: size), mode: fillMode) {
+                image = next
+            }
         }
     }
 
@@ -180,7 +191,7 @@ struct ThumbnailCell: View, Equatable {
             RoundedRectangle(cornerRadius: 3)
                 .fill(fillMode == .fit ? surfaces.mat : surfaces.mat.opacity(0.35))
 
-            if let image {
+            if let image = displayed {
                 Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: fillMode.swiftUIContentMode)

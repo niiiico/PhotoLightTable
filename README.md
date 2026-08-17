@@ -383,6 +383,41 @@ many. Stacking is the grid's alone: it is the projection that knows how many
 members of a family survived the filter, and nothing else is in a position to
 say.
 
+## Keeping the grid quick
+
+Four things, all found by asking what happens on every frame of a scroll.
+
+**Nothing was priming PhotoKit.** `updateCaching` existed and had no callers, so
+every cell decoded from cold at the moment it appeared — exactly when there is
+least time for it. A window of eight rows either side of the viewport is handed
+to the caching manager as you scroll, re-handed once you have moved a quarter of
+a window, since starting and stopping caching is itself work.
+
+**Thumbnails arrive in two passes, not one.** The loader waited for the final
+image and threw away the fast blurry one PhotoKit already had. That is right for
+judging a photograph and wrong for a grid being scrolled: the wait was a field of
+empty rectangles. `thumbnails(for:size:mode:)` is an `AsyncStream` and yields
+both — and cancels the request when nobody is listening, so a cell scrolled past
+stops competing for decode time with the ones now on screen. The loupe reads its
+images the same way.
+
+**A cached thumbnail is drawn in the same frame.** The cache is read during
+layout rather than awaited: a task, however short, is at least a frame away, and
+scrolling back over photographs already seen was a wave of cells filling in
+behind the pointer.
+
+**Two per-frame states left the grid's body.** Cell frames change whenever a cell
+scrolls into the lazy grid, and the rail's scale walked every day section pulling
+calendar components out of it. Both were rebuilding the most expensive body in
+the window. Frames now live in `CellFrames`, held with `@State` and observed only
+by the outline overlay; the scale is computed in `LibraryProjection` alongside the
+sections it comes from.
+
+The pattern in the last two — and in `ScrollPosition` — is the same: *holding a
+value must not mean watching it*. `@State` keeps a reference-type box alive
+without subscribing the view to it, and whoever actually draws from it takes it
+as an `@ObservedObject`.
+
 ## Editing
 
 Adjustments are **one edit session with a single save**, not an Apply between

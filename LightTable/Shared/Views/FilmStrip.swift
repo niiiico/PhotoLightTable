@@ -15,6 +15,10 @@ struct FilmStrip<Menu: View>: View {
     /// Verdict per photo, so the strip can show what has been decided without
     /// reaching into the store from a view this small.
     let ratingFor: (String) -> RatingValue
+    /// What this frame is, when it is one of several treatments of the same
+    /// photograph: its name, and how many the family holds. Same reason the
+    /// verdict is passed in — the strip does not read the store itself.
+    let familyFor: (String) -> (label: String?, count: Int)
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
     /// The right-click menu for a frame. Supplied by the host rather than built
@@ -35,6 +39,7 @@ struct FilmStrip<Menu: View>: View {
                                           height: height,
                                           isCurrent: item.id == currentID,
                                           rating: ratingFor(item.id),
+                                          family: familyFor(item.id),
                                           surfaces: surfaces)
                                 .id(item.id)
                                 .onTapGesture { onSelect(item.id) }
@@ -84,6 +89,7 @@ private struct FilmStripCell: View, Equatable {
     let height: CGFloat
     let isCurrent: Bool
     let rating: RatingValue
+    let family: (label: String?, count: Int)
     /// Passed in for the same reason as `ThumbnailCell`'s: this cell is
     /// compared, and the comparison cannot see the environment.
     let surfaces: Surfaces
@@ -115,6 +121,39 @@ private struct FilmStripCell: View, Equatable {
                     .padding(3)
             }
         }
+        // The count sits opposite the verdict, where there is room for it: a
+        // collapsed family in the strip shows one frame, and without this there
+        // is nothing to say the other three exist.
+        .overlay(alignment: .topTrailing) {
+            if family.count > 1 {
+                HStack(spacing: 2) {
+                    Image(systemName: "rectangle.stack")
+                    Text("\(family.count)")
+                }
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1.5)
+                .background(.black.opacity(0.6), in: Capsule())
+                .padding(3)
+            }
+        }
+        // Which treatment this is, along the bottom where a name can run to a
+        // few characters without covering the photograph.
+        .overlay(alignment: .bottom) {
+            if let label = family.label {
+                Text(label)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 1)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(.horizontal, 3)
+                    .padding(.bottom, rating.color == nil ? 3 : 8)
+            }
+        }
         .overlay(alignment: .bottom) {
             if let color = rating.color {
                 color.color
@@ -131,16 +170,19 @@ private struct FilmStripCell: View, Equatable {
         .opacity(isCurrent ? 1 : 0.55)
         .animation(.easeOut(duration: 0.15), value: isCurrent)
         .task(id: item.id) {
-            image = await ThumbnailLoader.shared.thumbnail(
+            for await next in ThumbnailLoader.shared.thumbnails(
                 for: item,
                 size: CGSize(width: height, height: height),
-                mode: .fill)
+                mode: .fill) {
+                image = next
+            }
         }
     }
 
     static func == (lhs: FilmStripCell, rhs: FilmStripCell) -> Bool {
         lhs.item.id == rhs.item.id && lhs.isCurrent == rhs.isCurrent
             && lhs.height == rhs.height && lhs.rating == rhs.rating
+            && lhs.family == rhs.family
             && lhs.surfaces.levels == rhs.surfaces.levels
     }
 }

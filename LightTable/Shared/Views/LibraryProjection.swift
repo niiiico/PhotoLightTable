@@ -1,6 +1,14 @@
 import Foundation
 import SwiftUI
 
+/// The timeline rail's scale, and the day sizes behind it.
+struct TimelineData {
+    var ticks: [TimelineIndex.Tick] = []
+    /// Photographs per day section, in display order — what a fraction of the
+    /// way down the rail is measured against.
+    var counts: [Int] = []
+}
+
 /// Memoises the expensive derivations from the library: what's in scope, what
 /// survives the filter, and the tally.
 ///
@@ -42,6 +50,13 @@ final class LibraryProjection: ObservableObject {
     /// has to offer a date inside it.
     private(set) var dateBounds: ClosedRange<Date>?
 
+    /// The scale down the side of the grid, and the day sizes it is drawn from.
+    ///
+    /// Here rather than in the view: building it walks every day section
+    /// pulling calendar components out, and the grid's body runs whenever a
+    /// cell scrolls into view. It changes only when the sections do.
+    private(set) var timeline = TimelineData()
+
     private var key: Key?
 
     func refresh(items: [PhotoItem],
@@ -74,6 +89,8 @@ final class LibraryProjection: ObservableObject {
         tally = ScopeTally(items: scoped, ratings: ratings)
         sections = PhotoLibraryService.groupByDay(visible,
                                                   oldestFirst: app.sortOrder == .oldestFirst)
+        timeline = TimelineData(ticks: TimelineIndex.ticks(for: sections.map { ($0.id, $0.items.count) }),
+                                counts: sections.map(\.items.count))
         // Taken from the ends rather than by scanning: the sections are already
         // sorted, whichever way round.
         if let first = sections.first?.id, let last = sections.last?.id {

@@ -146,8 +146,14 @@ struct RealLibraryPathTests {
             let aspect = CGFloat(asset.pixelWidth) / CGFloat(asset.pixelHeight)
             guard aspect > 0.7, aspect < 0.8 else { continue }
 
-            guard let image = await ThumbnailLoader.shared.fullImage(
-                for: PhotoItem(asset: asset), maxDimension: 2400) else { continue }
+            // The last of the stream: the degraded pass is not what the loupe
+            // ends up showing, and its shape is not what this is measuring.
+            var latest: PlatformImage?
+            for await next in ThumbnailLoader.shared.fullImages(
+                for: PhotoItem(asset: asset), maxDimension: 2400) {
+                latest = next
+            }
+            guard let image = latest else { continue }
             let converted = try #require(CIImage.from(image))
 
             print("MEASURED loupe asset a=\(aspect) | image \(image.size) | converted \(converted.extent.size) a=\(converted.extent.width / converted.extent.height)")

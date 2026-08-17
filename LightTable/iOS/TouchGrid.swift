@@ -24,7 +24,7 @@ struct TouchGrid: View {
     @State private var isSelecting = false
     /// Where each visible cell was laid out, so an opened family can be drawn
     /// around. Collected the same way the Mac grid does it.
-    @State private var cellFrames: [String: CGRect] = [:]
+    @State private var cellFrames = CellFrames()
 
     private static let gridSpace = "touchGrid"
 
@@ -43,10 +43,10 @@ struct TouchGrid: View {
             }
             .padding(4)
             .coordinateSpace(name: Self.gridSpace)
-            .onPreferenceChange(CellFramesKey.self) { cellFrames = $0 }
+            .onPreferenceChange(CellFramesKey.self) { cellFrames.byID = $0 }
             .overlay {
                 StackOutlineOverlay(families: openFamilies,
-                                    cellFrames: cellFrames,
+                                    frames: cellFrames,
                                     inset: 3)
             }
         }

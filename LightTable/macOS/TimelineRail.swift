@@ -11,6 +11,11 @@ import SwiftUI
 @MainActor
 final class ScrollPosition: ObservableObject {
     @Published var fraction: Double = 0
+
+    /// The middle of the last window handed to PhotoKit to decode ahead.
+    /// Deliberately not published: priming is a side effect of scrolling, not
+    /// something anything on screen is drawn from.
+    var lastPrimedCentre: Int?
 }
 
 /// The scrubber beside the grid: a year-and-month scale you can grab.
@@ -150,8 +155,10 @@ private struct ScrubPreview: View {
         // Reloaded as the pointer crosses into another day; the loader caches,
         // so scrubbing back over ground already covered costs nothing.
         .task(id: item.id) {
-            image = await ThumbnailLoader.shared.thumbnail(
-                for: item, size: CGSize(width: side, height: side), mode: .fill)
+            for await next in ThumbnailLoader.shared.thumbnails(
+                for: item, size: CGSize(width: side, height: side), mode: .fill) {
+                image = next
+            }
         }
     }
 }

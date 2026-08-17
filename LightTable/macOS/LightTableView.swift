@@ -12,6 +12,8 @@ struct LightTableView: View {
     /// Members of each opened family, so the grid can draw one outline around
     /// each rather than framing every photo separately.
     let openFamilies: [[String]]
+    /// The rail's scale, prepared with the sections it is drawn from.
+    let timeline: TimelineData
     let events: [LightTableEvent]
     /// Opens the event editor seeded with the given photos.
     let onNewEvent: ([String]) -> Void
@@ -29,7 +31,7 @@ struct LightTableView: View {
     /// Frames of the cells currently laid out, used to find what the pointer is
     /// over while dragging. LazyVGrid only materialises visible cells, so this
     /// stays small however large the library is.
-    @State private var cellFrames: [String: CGRect] = [:]
+    @State private var cellFrames = CellFrames()
     @State private var dragAnchorID: String?
     /// The selection as it stood when the current drag began, kept so a
     /// Command-drag combines against a fixed base rather than compounding.
@@ -43,6 +45,7 @@ struct LightTableView: View {
     /// Where the grid is scrolled to. Held rather than observed — see
     /// `ScrollPosition`.
     @State private var scrollPosition = ScrollPosition()
+    @AppStorage(PreferenceKeys.thumbnailFillMode) private var fillModeRaw = ThumbnailFillMode.fill.rawValue
 
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
@@ -78,10 +81,10 @@ struct LightTableView: View {
                         .padding(spacing)
                     }
                     .coordinateSpace(name: Self.gridSpace)
-                    .onPreferenceChange(CellFramesKey.self) { cellFrames = $0 }
+                    .onPreferenceChange(CellFramesKey.self) { cellFrames.byID = $0 }
                     .overlay {
                         StackOutlineOverlay(families: openFamilies,
-                                            cellFrames: cellFrames,
+                                            frames: cellFrames,
                                             inset: spacing / 2 - 1)
                     }
                     .gesture(dragSelectGesture)
@@ -96,7 +99,10 @@ struct LightTableView: View {
                     }
                 }
                 .coordinateSpace(name: Self.scrollSpace)
-                .onPreferenceChange(ScrollFractionKey.self) { scrollPosition.fraction = $0 }
+                .onPreferenceChange(ScrollFractionKey.self) { fraction in
+                    scrollPosition.fraction = fraction
+                    primeThumbnails(around: fraction)
+                }
                 .background {
                     // Covers the area below the last row, which the ZStack above
                     // does not extend into.
@@ -112,15 +118,26 @@ struct LightTableView: View {
                 }
 
                 if showsRail {
-                    TimelineRail(ticks: TimelineIndex.ticks(for: timelineDays),
+                    TimelineRail(ticks: timeline.ticks,
                                  position: scrollPosition,
                                  previewFor: { preview(atFraction: $0) },
                                  onLand: { land(at: $0, proxy: proxy) })
                 }
                 }
             }
-            .onAppear { app.columnCount = columns }
+            .onAppear {
+                app.columnCount = columns
+                primeThumbnails(around: scrollPosition.fraction, force: true)
+            }
             .onChange(of: columns) { _, newValue in app.columnCount = newValue }
+            // A different set of photographs, or a different size of them: what
+            // was decoded ahead is about the old ones.
+            .onChange(of: items.count) { _, _ in
+                primeThumbnails(around: scrollPosition.fraction, force: true)
+            }
+            .onChange(of: app.thumbnailSize) { _, _ in
+                primeThumbnails(around: scrollPosition.fraction, force: true)
+            }
         }
         // Neutral, and the same in either appearance: what the photographs are
         // judged against should not move when the system decides it is evening.
@@ -253,7 +270,7 @@ struct LightTableView: View {
     }
 
     private func item(at point: CGPoint) -> String? {
-        cellFrames.first { $0.value.contains(point) }?.key
+        cellFrames.id(at: point)
     }
 
     private func clearSelection() {
@@ -269,14 +286,10 @@ struct LightTableView: View {
     /// handful of days is a scroll, not a journey.
     private var showsRail: Bool { sections.count >= 6 }
 
-    private var timelineDays: [(day: Date, count: Int)] {
-        sections.map { ($0.id, $0.items.count) }
-    }
-
     /// The day a fraction of the way down, and the frame that opens it.
     private func preview(atFraction fraction: Double) -> (day: Date, item: PhotoItem)? {
-        guard let index = TimelineIndex.index(atFraction: fraction,
-                                              in: sections.map(\.items.count)),
+        guard let index = TimelineIndex.index(atFraction: fraction, in: timeline.counts),
+              index < sections.count,
               let first = sections[index].items.first else { return nil }
         return (sections[index].id, first)
     }
@@ -288,6 +301,33 @@ struct LightTableView: View {
         proxy.scrollTo(target.id, anchor: .center)
         app.focusID = target.id
         app.selectedIDs = [target.id]
+    }
+
+    /// Tells PhotoKit which photographs are about to be needed.
+    ///
+    /// Nothing was calling this, so every cell decoded from cold at the moment
+    /// it appeared — which is exactly when there is least time for it. A window
+    /// either side of the viewport is handed to the caching manager instead,
+    /// and re-handed only once the view has moved a quarter of a window, since
+    /// starting and stopping caching is itself work.
+    private func primeThumbnails(around fraction: Double, force: Bool = false) {
+        guard !items.isEmpty else { return }
+        let centre = Int(fraction * Double(items.count - 1))
+        // Eight rows either side: enough to stay ahead of a flick, not so much
+        // that a large thumbnail size fills memory with photographs nobody is
+        // going to reach.
+        let window = max(40, app.columnCount * 8)
+        if !force, let last = scrollPosition.lastPrimedCentre,
+           abs(last - centre) < window / 4 { return }
+        scrollPosition.lastPrimedCentre = centre
+
+        let lower = max(0, centre - window)
+        let upper = min(items.count, centre + window)
+        guard lower < upper else { return }
+        ThumbnailLoader.shared.updateCaching(
+            visible: Array(items[lower..<upper]),
+            size: CGSize(width: app.thumbnailSize, height: app.thumbnailSize),
+            mode: ThumbnailFillMode(rawValue: fillModeRaw) ?? .fill)
     }
 
     /// How far down the content is scrolled, 0 to 1.

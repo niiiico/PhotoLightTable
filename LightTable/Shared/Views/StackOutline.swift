@@ -6,6 +6,21 @@ import SwiftUI
 /// by the stack outline, which needs to know where a family sits on screen.
 /// `LazyVGrid` only materialises visible cells, so this stays small however
 /// large the library is.
+/// The frames, kept in an object the grid holds but does not watch.
+///
+/// They change whenever a cell scrolls into or out of the lazy grid, and the
+/// grid's own body is the most expensive thing in the window to rebuild. Only
+/// the outline overlay is drawn from them; drag selection reads them without
+/// wanting to be told.
+@MainActor
+final class CellFrames: ObservableObject {
+    @Published var byID: [String: CGRect] = [:]
+
+    func id(at point: CGPoint) -> String? {
+        byID.first { $0.value.contains(point) }?.key
+    }
+}
+
 struct CellFramesKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
 
@@ -56,7 +71,7 @@ enum StackOutline {
 struct StackOutlineOverlay: View {
     /// Member ids per opened family, in the order they are laid out.
     let families: [[String]]
-    let cellFrames: [String: CGRect]
+    @ObservedObject var frames: CellFrames
     /// How far outside the cells the outline sits. Must stay inside half the
     /// grid's spacing or neighbouring outlines touch.
     var inset: CGFloat = 4
@@ -79,7 +94,7 @@ struct StackOutlineOverlay: View {
     private func segments(of family: [String]) -> [CGRect] {
         // Only what is on screen: a family scrolled half out of view is drawn
         // around the part that is showing rather than not at all.
-        let frames = family.compactMap { cellFrames[$0] }
-        return StackOutline.segments(for: frames).map { $0.insetBy(dx: -inset, dy: -inset) }
+        let rects = family.compactMap { frames.byID[$0] }
+        return StackOutline.segments(for: rects).map { $0.insetBy(dx: -inset, dy: -inset) }
     }
 }

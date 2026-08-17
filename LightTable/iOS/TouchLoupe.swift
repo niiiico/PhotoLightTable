@@ -223,7 +223,9 @@ struct TouchLoupe: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
-        image = await ThumbnailLoader.shared.fullImage(for: current, maxDimension: 2400)
+        for await next in ThumbnailLoader.shared.fullImages(for: current, maxDimension: 2400) {
+            image = next
+        }
     }
 }
 #endif
