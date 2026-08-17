@@ -198,14 +198,21 @@ struct RealLibraryPathTests {
         }
     }
 
-    /// Opt-in: it writes to the real photo library and then removes what it
-    /// wrote, and on macOS `deleteAssets` puts up a confirmation the test host
-    /// cannot answer — so an ordinary run hangs on a dialog nobody is looking
-    /// at. Skipped is the right shape; failing every run would just be noise.
+    /// Opt-in and **not unattended**: it writes to the real photo library and
+    /// then removes what it wrote, and on macOS `deleteAssets` puts up a
+    /// confirmation. Nothing in an automated run can answer that, so this waits
+    /// on a dialog until the whole run times out. Someone has to be watching
+    /// and click Delete.
     ///
-    ///     LIGHTTABLE_LIVE_TESTS=1 xcodebuild test -scheme LightTable \
-    ///         -destination platform=macOS \
+    ///     TEST_RUNNER_LIGHTTABLE_LIVE_TESTS=1 xcodebuild test \
+    ///         -scheme LightTable -destination platform=macOS \
     ///         -only-testing:LightTableTests/RealLibraryPathTests
+    ///
+    /// The prefix is the point: `xcodebuild` does not pass its own environment
+    /// to the test host, and `TEST_RUNNER_` is what crosses that boundary —
+    /// the variable arrives inside without it. Written here without the prefix
+    /// first, which meant the test could never run at all rather than running
+    /// when asked.
     @MainActor
     @Test("Making a variant of a real photo actually succeeds",
           .enabled(if: ProcessInfo.processInfo.environment["LIGHTTABLE_LIVE_TESTS"] == "1"))

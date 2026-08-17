@@ -47,3 +47,33 @@ changed.
 If you add logic that deserves a test and it is stuck behind PhotoKit, the same
 move usually works: name the handful of fields the logic actually reads, and
 take those.
+
+## Tests that need the real library
+
+`RealLibraryPathTests` asks PhotoKit for actual photographs instead of supplying
+its own. They exist because the failures they catch were invisible to every test
+that made up its input: an image built from a `CGImage` always agrees with
+itself, so disagreements between an image's size and its pixels — which is what
+`displaySizeImage` hands over for a photo taken with the camera rotated — could
+never appear.
+
+They skip entirely without library access, which makes them close to worthless
+on another machine. That is the trade.
+
+One of them writes: `variantCreationSucceeds` makes a real variant and removes
+it again, because nothing short of asking PhotoKit catches a request it refuses
+outright — `PHPhotosErrorInvalidResource` passed every geometry check ever
+written. It is **not unattended**: macOS puts up a confirmation for the deletion
+and the run waits on it.
+
+```
+TEST_RUNNER_LIGHTTABLE_LIVE_TESTS=1 xcodebuild test \
+    -scheme LightTable -destination 'platform=macOS' \
+    -only-testing:LightTableTests/RealLibraryPathTests
+```
+
+**`TEST_RUNNER_` is not decoration.** `xcodebuild` does not pass its environment
+to the test host; that prefix is what crosses the boundary, and the variable
+arrives inside stripped of it. Without it the variable is simply absent, and a
+test gated on one silently never runs — which is worse than failing, because the
+run still says everything passed.
