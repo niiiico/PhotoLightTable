@@ -28,6 +28,7 @@ per-platform invocations.
 | ⇧ + arrows | Extend selection |
 | Space / Return | Open or close the loupe |
 | ⌘A | Select all |
+| ⌘G | Go to a date |
 | Esc | Clear selection |
 
 `P` and `X` advance to the next photo automatically when a single photo is
@@ -281,6 +282,41 @@ input is always newest-first already. Keeping that invariant makes ordering O(n)
 per redraw rather than O(n log n), which is the difference between a smooth and a
 stuttering thumbnail-size slider on a large library. If a future change ever
 reorders items upstream, this has to become a real sort.
+
+## Finding a day
+
+Two ways, for the two ways you know when something was.
+
+**⌘G — Go to Date.** When you know the date. The sheet takes a typed date as
+well as a calendar, because a graphical picker can only be walked a month at a
+time and a date years back is exactly the scrolling this replaces. It lands on
+that day, or on the **nearest day that has photographs on it** — the usual reason
+to miss is that nothing was shot that day, and "around then" is as likely to be
+the following weekend as the previous one. Ties go to the earlier day, so the
+answer doesn't depend on which way the grid happens to be sorted. It searches the
+sections the grid is showing, so a filtered view jumps within what survives the
+filter.
+
+**The rail beside the grid.** When you don't. Years — or months, once the whole
+span fits in about eighteen of them — marked down the right-hand edge, drag to
+fly through with the day under the pointer in a callout, release to land.
+
+The scale is drawn in *photographs, not in time*: a tick sits at the fraction of
+the library that day begins at. A fortnight of heavy shooting is a longer stretch
+of the scrollbar than the two quiet years after it, and a calendar-shaped rail
+would put its marks nowhere near where those years actually appear.
+`TimelineIndex.index(atFraction:in:)` is the exact inverse of the placement, so
+letting go lands on the day whose label the pointer was against.
+
+It sits *beside* the grid rather than over it — a rail floating on the right-hand
+column means the last frame of every row can't be clicked — and it's absent below
+six day sections, where a scale is not worth its width. Landing sets the focus,
+so the keyboard carries on from there and the scope remembers where you were.
+
+Scroll position is published through `ScrollPosition`, an object the grid holds
+with `@State` rather than `@StateObject`: it changes on every frame of a scroll,
+and the grid's body builds structure for every section in the library. Holding it
+must not mean watching it. The rail observes it instead.
 
 ## Preferences
 

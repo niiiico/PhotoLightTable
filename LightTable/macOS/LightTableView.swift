@@ -40,13 +40,20 @@ struct LightTableView: View {
     /// Anything that went wrong making or removing a photo.
     @State private var actionError: String?
 
+    /// Where the grid is scrolled to. Held rather than observed — see
+    /// `ScrollPosition`.
+    @State private var scrollPosition = ScrollPosition()
+
     private let spacing: CGFloat = 10
     private static let gridSpace = "lightTableGrid"
+    private static let scrollSpace = "lightTableScroll"
 
     var body: some View {
         GeometryReader { geo in
-            let columns = columnCount(for: geo.size.width)
+            let railWidth = showsRail ? TimelineRail.width : 0
+            let columns = columnCount(for: geo.size.width - railWidth)
             ScrollViewReader { proxy in
+                HStack(spacing: 0) {
                 ScrollView {
                     ZStack(alignment: .top) {
                         // Sits behind the grid and swallows clicks that miss a
@@ -78,7 +85,18 @@ struct LightTableView: View {
                                             inset: spacing / 2 - 1)
                     }
                     .gesture(dragSelectGesture)
+                    // Read from inside the scrolled content: its distance above
+                    // the top of the scroll view is how far down we are.
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(
+                                key: ScrollFractionKey.self,
+                                value: fraction(of: content, viewport: geo.size.height))
+                        }
+                    }
                 }
+                .coordinateSpace(name: Self.scrollSpace)
+                .onPreferenceChange(ScrollFractionKey.self) { scrollPosition.fraction = $0 }
                 .background {
                     // Covers the area below the last row, which the ZStack above
                     // does not extend into.
@@ -91,6 +109,15 @@ struct LightTableView: View {
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(newValue, anchor: .center)
                     }
+                }
+
+                if showsRail {
+                    TimelineRail(ticks: TimelineIndex.ticks(for: timelineDays),
+                                 position: scrollPosition,
+                                 dayFor: { day(atFraction: $0) },
+                                 onScrub: { scrub(to: $0, proxy: proxy, landing: false) },
+                                 onLand: { scrub(to: $0, proxy: proxy, landing: true) })
+                }
                 }
             }
             .onAppear { app.columnCount = columns }
@@ -344,6 +371,39 @@ struct LightTableView: View {
 
     private func gridItems(count: Int) -> [GridItem] {
         Array(repeating: GridItem(.fixed(app.thumbnailSize), spacing: spacing), count: count)
+    }
+
+    /// A scale is only worth its width once there is something to scan. A
+    /// handful of days is a scroll, not a journey.
+    private var showsRail: Bool { sections.count >= 6 }
+
+    private var timelineDays: [(day: Date, count: Int)] {
+        sections.map { ($0.id, $0.items.count) }
+    }
+
+    private func day(atFraction fraction: Double) -> Date? {
+        TimelineIndex.index(atFraction: fraction, in: sections.map(\.items.count))
+            .map { sections[$0].id }
+    }
+
+    /// Follows the scrubber, and on release leaves the focus where it landed so
+    /// the keyboard carries on from there — and so the scope remembers it.
+    private func scrub(to fraction: Double, proxy: ScrollViewProxy, landing: Bool) {
+        guard let index = TimelineIndex.index(atFraction: fraction,
+                                              in: sections.map(\.items.count)),
+              let target = sections[index].items.first else { return }
+        proxy.scrollTo(target.id, anchor: .center)
+        if landing {
+            app.focusID = target.id
+            app.selectedIDs = [target.id]
+        }
+    }
+
+    /// How far down the content is scrolled, 0 to 1.
+    private func fraction(of content: GeometryProxy, viewport: CGFloat) -> Double {
+        let offset = -content.frame(in: .named(Self.scrollSpace)).minY
+        let scrollable = max(1, content.size.height - viewport)
+        return min(max(offset / scrollable, 0), 1)
     }
 
     private func columnCount(for width: CGFloat) -> Int {

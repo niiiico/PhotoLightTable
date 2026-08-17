@@ -17,6 +17,12 @@ struct GoToDateSheet: View {
             Text("Go to Date")
                 .font(.headline)
 
+            // Typed first, calendar second. The graphical picker can only be
+            // walked a month at a time, which for a date years back is the
+            // scrolling this sheet exists to replace.
+            picker
+                .datePickerStyle(.stepperField)
+
             picker
                 .datePickerStyle(.graphical)
                 .labelsHidden()
