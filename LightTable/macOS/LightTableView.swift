@@ -36,7 +36,6 @@ struct LightTableView: View {
     @State private var dragCombine: AppModel.SelectionCombine = .replace
     @State private var dragLastTargetID: String?
     /// The variant awaiting confirmation before it is removed from the library.
-    @State private var pendingRemoval: PhotoItem?
     /// Anything that went wrong making or removing a photo.
     @State private var actionError: String?
 
@@ -112,15 +111,6 @@ struct LightTableView: View {
         .onKeyPress(action: handleKey)
         .overlay {
             if items.isEmpty { emptyState }
-        }
-        .alert("Remove this version?",
-               isPresented: Binding(get: { pendingRemoval != nil },
-                                    set: { if !$0 { pendingRemoval = nil } }),
-               presenting: pendingRemoval) { item in
-            Button("Remove", role: .destructive) { remove(item) }
-            Button("Cancel", role: .cancel) { pendingRemoval = nil }
-        } message: { item in
-            Text(removalMessage(for: item))
         }
         .alert("That didn't work",
                isPresented: Binding(get: { actionError != nil },
@@ -204,6 +194,13 @@ struct LightTableView: View {
         }
     }
 
+    /// Said in the menu rather than in a dialog of our own.
+    ///
+    /// macOS asks for confirmation itself before deleting anything from the
+    /// library, and it cannot be waived. Asking first as well meant two dialogs
+    /// for one decision — the second of which is the one that actually decides.
+    /// This is the part the system prompt does not say, so it goes where it can
+    /// be read before committing to anything.
     private func removalMessage(for item: PhotoItem) -> String {
         let name = ratings.variantLabel(for: item.id) ?? "This version"
         return """
@@ -218,7 +215,6 @@ struct LightTableView: View {
     /// offered for photos the app itself created, never for an original. See
     /// docs/adr-001, which this amends.
     private func remove(_ item: PhotoItem) {
-        pendingRemoval = nil
         Task {
             do {
                 try await PhotoVariants.remove(item, context: context, ratings: ratings)
@@ -438,7 +434,8 @@ struct LightTableView: View {
         // Offered only for photos this app made. An original is someone's
         // photograph; a variant is a copy of one, and its source is still here.
         if ratings.isVariant(item.id) {
-            Button("Remove This Version…", role: .destructive) { pendingRemoval = item }
+            Button("Remove This Version…", role: .destructive) { remove(item) }
+                .help(removalMessage(for: item))
         }
         Divider()
         Button("Copy Adjustments") {

@@ -68,7 +68,15 @@ Two further safeguards, neither of which is the app's own doing:
 
 - PhotoKit's `deleteAssets` moves an asset to **Recently Deleted**, so it can be
   brought back in Photos for thirty days. Nothing here erases anything.
-- macOS puts its own confirmation in front of the deletion, on top of the app's.
+- macOS puts its own confirmation in front of the deletion, and it cannot be
+  waived.
+
+That second one is why the app asks nothing. It did at first, which meant two
+dialogs for one decision — and the second was the one that actually decided, so
+the first was a delay dressed as a safeguard. What the system prompt does not
+say — that this goes to Recently Deleted and that the photo it was made from is
+untouched — is in the menu item instead, where it can be read *before*
+committing to anything.
 
 The bookkeeping is ordered so a refused or cancelled deletion leaves nothing
 behind: the variant record is dropped only *after* the asset is gone. A variant

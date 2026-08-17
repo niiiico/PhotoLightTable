@@ -515,8 +515,13 @@ family so it stacks with its source. It carries no adjustment, because there is
 no editing session open to take one from: it means "another one of these to work
 on" rather than "save what I have done".
 
-**Remove This Version…** takes one away again, behind a confirmation. Only ever
-a version, never an original.
+**Remove This Version…** takes one away again. Only ever a version, never an
+original.
+
+macOS asks for confirmation itself and will not be talked out of it, so the app
+asks nothing — two dialogs for one decision is worse than none, and the second
+is the one that decides. What the system prompt leaves out, that this goes to
+Recently Deleted and that the source is untouched, is on the menu item.
 
 A copy carries **every resource** the source is made of, not just its main
 image — so a duplicated Live Photo is still live, and a RAW beside a JPEG comes
