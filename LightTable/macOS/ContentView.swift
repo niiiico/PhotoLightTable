@@ -62,6 +62,14 @@ struct ContentView: View {
             // and not in the way of anything.
             .overlay(alignment: .bottomLeading) { BuildStamp() }
             .toolbar { toolbarContent }
+            // The window's content is a fixed dark grey whatever the appearance
+            // preference says, and the title bar is translucent over it: in the
+            // light appearance that left the album's name as near-black text on
+            // a bar tinted by the dark table under it, and each toolbar item on
+            // a bright slab. The bar is told to draw dark instead, so its title
+            // and its controls resolve against what they are actually on.
+            .toolbarBackground(Surfaces.rail, for: .windowToolbar)
+            .toolbarColorScheme(.dark, for: .windowToolbar)
             .navigationTitle(title)
             .navigationSubtitle(subtitle)
         }
@@ -174,26 +182,14 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         // Kept as one item so the group can't be split apart or reordered when
-        // the toolbar overflows.
-        ToolbarItem(placement: .navigation) {
-            let tally = projection.tally
-            HStack(spacing: 10) {
-                Text("\(tally.total) photo\(tally.total == 1 ? "" : "s")")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .fixedSize()
-                    .help(tally.total > 0
-                          ? "\(Int(tally.progress * 100))% reviewed"
-                          : "Nothing in this selection")
-
-                colourFilter
-
-                Divider().frame(height: 14)
-
-                TallyChips(tally: tally)
-            }
-            .fixedSize()
+        // the toolbar overflows. The system's own backing is dropped where it
+        // can be: this is a run of text and chips that carry their own shapes,
+        // and the rounded slab behind it clipped the first digits of the count.
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) { tallyBar }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .navigation) { tallyBar }
         }
 
         ToolbarItem {
@@ -258,6 +254,28 @@ struct ContentView: View {
             }
             .help("Keyboard shortcuts")
         }
+    }
+
+    /// How much is in the current selection, and the chips that filter it.
+    private var tallyBar: some View {
+        let tally = projection.tally
+        return HStack(spacing: 10) {
+            Text("\(tally.total) photo\(tally.total == 1 ? "" : "s")")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .fixedSize()
+                .help(tally.total > 0
+                      ? "\(Int(tally.progress * 100))% reviewed"
+                      : "Nothing in this selection")
+
+            colourFilter
+
+            Divider().frame(height: 14)
+
+            TallyChips(tally: tally)
+        }
+        .fixedSize()
     }
 
     private func syncFailureButton(_ message: String) -> some View {

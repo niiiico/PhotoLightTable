@@ -3,7 +3,7 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
-2026-08-17 - Put the photographs on neutral grey and quieten everything around them: a lighter mat behind photographs that don't fill their cell, the sidebar and the day headers cut from the same neutral instead of the system's bright chrome, the picked/rejected frame in the loupe dropped in favour of a mark on each frame of the filmstrip, and the sidebar's folder-gear replaced by a photo count at the end of every line.
+2026-08-17 - Put the photographs on neutral grey and quieten everything around them: a lighter mat behind photographs that don't fill their cell, the sidebar and the day headers cut from the same neutral instead of the system's bright chrome, the picked/rejected frame in the loupe dropped in favour of a mark on each frame of the filmstrip, and the sidebar's folder-gear replaced by a photo count at the end of every line. The window's top bar draws dark to match, since it was a light bar over a dark table with near-black text on it, and the selected album is grey rather than accent blue.
 
 2026-08-16 - Select a subject by tapping it: Vision's instance mask says which one you meant, and the result is stored as the starting region of an ordinary brush mask — so paint adds to it, erase takes away, and no future version of the model can change an edit already made. About 4 KB in the recipe, which is exactly the answer the model gave rather than an upscale of it.
 

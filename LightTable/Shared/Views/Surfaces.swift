@@ -23,9 +23,16 @@ enum Surfaces {
     /// hole in the table.
     static let mat = Color(white: 0.16)
 
-    /// Behind the sidebar. Darker than the table so the list reads as the edge
-    /// of the room and the table as the lit surface in it.
+    /// Behind the sidebar and the window toolbar — the chrome that frames the
+    /// table. Darker than the table, so the list and the top bar read as the
+    /// edge of the room and the table as the lit surface in it.
     static let rail = Color(white: 0.14)
+
+    /// The highlight behind the selected album. Grey rather than the system
+    /// accent: a saturated blue bar sitting a few inches from the photographs
+    /// is a colour cast in the corner of the eye, and the whole point of the
+    /// neutral greys is that nothing beside a photograph tints it.
+    static let selection = Color(white: 0.34)
 
     /// Behind the pinned day headers. A hair off the table: enough to separate
     /// one day from the next while scrolling, not enough to become a row of

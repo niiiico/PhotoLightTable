@@ -51,6 +51,9 @@ struct SidebarView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
+                    // Explicit, because the list's tint is now the grey of the
+                    // selection bar and would leave this barely visible.
+                    .foregroundStyle(.white.opacity(0.65))
                     .help("New event from the current selection or date range")
                 }
             }
@@ -64,6 +67,7 @@ struct SidebarView: View {
         // is forced inside so the system's own label and selection colours
         // resolve against it, whatever the appearance preference says.
         .background(Surfaces.rail)
+        .tint(Surfaces.selection)
         .environment(\.colorScheme, .dark)
     }
 
