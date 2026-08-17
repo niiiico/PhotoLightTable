@@ -222,6 +222,9 @@ struct LightTableView: View {
         Task {
             do {
                 try await PhotoVariants.remove(item, context: context, ratings: ratings)
+                // No scope should try to return to a photograph that has left
+                // the library.
+                app.forgetRemembered(item.id)
                 await library.reload()
             } catch {
                 actionError = error.localizedDescription

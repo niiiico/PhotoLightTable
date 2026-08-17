@@ -94,7 +94,16 @@ final class AppModel: ObservableObject {
     /// Multi-selection in the grid, in the order the user built it.
     @Published var selectedIDs: Set<String> = []
     /// The cell the keyboard acts on and that anchors shift-range selection.
-    @Published var focusID: String?
+    @Published var focusID: String? {
+        didSet {
+            guard let focusID else { return }
+            scopeMemory.remember(focusID, in: selection)
+        }
+    }
+
+    /// Where you were in each album, so leaving one and coming back does not
+    /// land on the newest photograph.
+    private var scopeMemory = ScopeMemory<LibrarySelection>()
 
     /// Families opened out in the grid, by the id of the photo they share
     /// pixels with.
@@ -148,6 +157,30 @@ final class AppModel: ObservableObject {
     func toggleColorFilter(_ color: ColorLabel) {
         if colorFilter.contains(color) { colorFilter.remove(color) }
         else { colorFilter.insert(color) }
+    }
+
+    /// Puts the focus back where it was in the scope now selected.
+    ///
+    /// Called when the selection changes, from `onChange` rather than from
+    /// `selection`'s own `didSet`: the sidebar's `List(selection:)` writes the
+    /// selection during a view update, and publishing another property from
+    /// inside that pass is the fault the sort override was restructured to
+    /// avoid.
+    ///
+    /// Focus rather than a scroll offset. It is the thing the grid already
+    /// scrolls to, it survives the cells being laid out at a different width,
+    /// and it is what you actually mean by where you were — a photograph, not
+    /// a number of points.
+    func restoreFocusForScope() {
+        let remembered = scopeMemory.focus(in: selection)
+        focusID = remembered
+        selectedIDs = remembered.map { [$0] } ?? []
+    }
+
+    /// Forgets a photograph that has left the library, so no scope tries to
+    /// return to it.
+    func forgetRemembered(_ id: String) {
+        scopeMemory.forget(id)
     }
 
     /// Assets the keyboard shortcuts apply to: the multi-selection if there is

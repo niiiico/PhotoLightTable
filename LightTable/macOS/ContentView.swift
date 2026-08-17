@@ -154,6 +154,10 @@ struct ContentView: View {
         }
         // Event albums depend on both ratings and membership, so rebuild the
         // plans whenever either could have moved. The syncer debounces.
+        // Leaving an album and coming back should land where you left it —
+        // notably after making an event, which moves you to the new event and
+        // used to drop you at the newest photograph on the way back.
+        .onChange(of: app.selection) { _, _ in app.restoreFocusForScope() }
         .onChange(of: ratings.revision) { _, _ in scheduleEventAlbumSync() }
         .onChange(of: library.items.count) { _, _ in scheduleEventAlbumSync() }
         .onChange(of: events.count) { _, _ in scheduleEventAlbumSync() }
@@ -219,6 +223,13 @@ struct ContentView: View {
         // Kept as one item so the group can't be split apart or reordered when
         // the toolbar overflows.
         bareItem(placement: .navigation) { tallyBar }
+
+        // The tools belong at the trailing edge. They used to be pushed there
+        // by the system's title item sitting between them and the leading
+        // group; with the title drawn by us that gap went, and they slid left.
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.flexible)
+        }
 
         bareItem {
             Menu {

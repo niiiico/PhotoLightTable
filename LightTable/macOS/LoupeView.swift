@@ -87,7 +87,10 @@ struct LoupeView: View {
             }
         }
         .background(surfaces.loupe)
-        .ignoresSafeArea()
+        // Deliberately inside its column now. Ignoring the safe area made the
+        // loupe the size of the window while it was laid out for the detail
+        // column, so the photograph was centred on the window and then drawn
+        // with the album list over its left-hand side.
         .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
