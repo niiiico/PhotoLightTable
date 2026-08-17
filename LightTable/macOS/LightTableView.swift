@@ -471,21 +471,27 @@ struct LightTableView: View {
         }
     }
 
+    /// A quiet rule between one day and the next.
+    ///
+    /// It was a bar of system material, which is bright and slightly blue and,
+    /// against a table this dark, read as the loudest thing on screen — a row of
+    /// headlines with the photographs underneath them. Cut from the table's own
+    /// grey instead, and set in the same weight as everything else, it separates
+    /// the days without asking to be read first.
     private func sectionHeader(_ section: DaySection) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(section.title)
-                .font(.headline)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
             Text("\(section.items.count)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.quaternary, in: Capsule())
+                .font(.system(size: 12))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.4))
             Spacer()
         }
         .padding(.vertical, 6)
-        .padding(.horizontal, 4)
-        .background(.regularMaterial)
+        .padding(.horizontal, 6)
+        .background(Surfaces.header)
     }
 
     private var emptyState: some View {

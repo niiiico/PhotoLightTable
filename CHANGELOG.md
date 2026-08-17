@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-17 - Put the photographs on neutral grey and quieten everything around them: a lighter mat behind photographs that don't fill their cell, the sidebar and the day headers cut from the same neutral instead of the system's bright chrome, the picked/rejected frame in the loupe dropped in favour of a mark on each frame of the filmstrip, and the sidebar's folder-gear replaced by a photo count at the end of every line.
+
 2026-08-16 - Select a subject by tapping it: Vision's instance mask says which one you meant, and the result is stored as the starting region of an ordinary brush mask — so paint adds to it, erase takes away, and no future version of the model can change an edit already made. About 4 KB in the recipe, which is exactly the answer the model gave rather than an upscale of it.
 
 2026-08-15 - Fold the colour labels into a submenu in the grid's context menu, so making a photo — duplicate, split, remove a version — is not six items below the fold.

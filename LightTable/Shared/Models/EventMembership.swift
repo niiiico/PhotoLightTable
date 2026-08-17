@@ -22,4 +22,21 @@ enum EventMembership {
             return interval.contains(date)
         }
     }
+
+    /// Cheap structural summary of the events, so a change to a date range or to
+    /// membership invalidates a cache keyed on it without a change counter
+    /// threaded through every mutation site.
+    static func stamp(of events: [LightTableEvent]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(events.count)
+        for event in events {
+            hasher.combine(event.name)
+            hasher.combine(event.startDate)
+            hasher.combine(event.endDate)
+            hasher.combine(event.pinnedAssetIDs.count)
+            hasher.combine(event.excludedAssetIDs.count)
+            hasher.combine(event.isExplicit)
+        }
+        return hasher.finalize()
+    }
 }

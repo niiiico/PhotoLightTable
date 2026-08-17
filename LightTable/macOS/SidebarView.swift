@@ -11,9 +11,15 @@ struct SidebarView: View {
 
     @EnvironmentObject private var app: AppModel
     @Environment(\.modelContext) private var context
+    @StateObject private var counts = EventCountCache()
 
     var body: some View {
-        List(selection: $app.selection) {
+        // Counting is a pass over the library per event, and this body runs on
+        // every selection change — including each step of a drag across the
+        // grid. The cache makes all but the first of those free.
+        counts.refresh(events: events, items: allItems)
+
+        return List(selection: $app.selection) {
             Section("Library") {
                 Label("All Photos", systemImage: "photo.on.rectangle.angled")
                     .badge(allItems.count)
@@ -33,6 +39,7 @@ struct SidebarView: View {
                 } else {
                     ForEach(sortedEvents) { event in
                         eventRow(event)
+                            .badge(counts.count(of: event))
                             .tag(LibrarySelection.event(event.persistentModelID))
                     }
                 }
@@ -50,6 +57,14 @@ struct SidebarView: View {
 
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        // Cut from the same neutral as the table rather than the system's
+        // sidebar material, which arrives bright and faintly blue and, next to
+        // a table this dark, reads as the brightest thing in the window. Dark
+        // is forced inside so the system's own label and selection colours
+        // resolve against it, whatever the appearance preference says.
+        .background(Surfaces.rail)
+        .environment(\.colorScheme, .dark)
     }
 
     private var sortedEvents: [LightTableEvent] {
@@ -57,20 +72,11 @@ struct SidebarView: View {
     }
 
     private func eventRow(_ event: LightTableEvent) -> some View {
-        HStack(spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(event.name)
-                Text(dateRangeText(event))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if event.isSyncedToPhotos {
-                Image(systemName: "folder.badge.gearshape")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("Mirrored to a folder of albums in Photos")
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(event.name)
+            Text(dateRangeText(event))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .contextMenu {
             Button("Edit…") { editingEvent = event }
@@ -92,17 +98,42 @@ struct SidebarView: View {
         }
     }
 
+    /// The range only. A fixed-membership event used to lead with its count
+    /// here, which is now the number at the end of the row like every other.
     private func dateRangeText(_ event: LightTableEvent) -> String {
         let start = event.startDate.formatted(.dateTime.day().month(.abbreviated).year())
         let end = event.endDate.formatted(.dateTime.day().month(.abbreviated).year())
-        let range = start == end ? start : "\(start) – \(end)"
+        return start == end ? start : "\(start) – \(end)"
+    }
+}
 
-        // A fixed-membership event's range is only a label, so lead with the
-        // count that actually determines what's inside.
-        guard event.isExplicit else { return range }
-        let count = event.pinnedAssetIDs.count
-        return "\(count) photo\(count == 1 ? "" : "s") · \(range)"
+/// How many photos each event holds.
+///
+/// Membership is a pass over the library, so this is cached against the two
+/// things it depends on — the size of the library and the shape of the events.
+/// Notably not the selection, which moves on every step of a drag through the
+/// grid and would otherwise recount every event per frame.
+@MainActor
+final class EventCountCache: ObservableObject {
+    private struct Key: Equatable {
+        var itemCount: Int
+        var eventsStamp: Int
     }
 
+    private var key: Key?
+    private var counts: [PersistentIdentifier: Int] = [:]
+
+    func refresh(events: [LightTableEvent], items: [PhotoItem]) {
+        let newKey = Key(itemCount: items.count, eventsStamp: EventMembership.stamp(of: events))
+        guard newKey != key else { return }
+        key = newKey
+        counts = Dictionary(uniqueKeysWithValues: events.map {
+            ($0.persistentModelID, EventMembership.members(of: $0, in: items).count)
+        })
+    }
+
+    func count(of event: LightTableEvent) -> Int {
+        counts[event.persistentModelID] ?? 0
+    }
 }
 #endif

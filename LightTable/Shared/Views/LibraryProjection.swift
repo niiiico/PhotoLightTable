@@ -54,7 +54,7 @@ final class LibraryProjection: ObservableObject {
                          ratingsRevision: ratings.revision,
                          variantsRevision: ratings.variantsRevision,
                          expandedStacks: app.expandedStacks,
-                         eventsStamp: Self.stamp(of: events))
+                         eventsStamp: EventMembership.stamp(of: events))
         guard newKey != key else { return }
         key = newKey
 
@@ -148,22 +148,5 @@ final class LibraryProjection: ObservableObject {
             result.append(item)
         }
         return (result, sizes, openFamilies)
-    }
-
-    /// Cheap structural summary of the events, so edits to a date range or to
-    /// membership invalidate the cache without needing a change counter
-    /// threaded through every mutation site.
-    private static func stamp(of events: [LightTableEvent]) -> Int {
-        var hasher = Hasher()
-        hasher.combine(events.count)
-        for event in events {
-            hasher.combine(event.name)
-            hasher.combine(event.startDate)
-            hasher.combine(event.endDate)
-            hasher.combine(event.pinnedAssetIDs.count)
-            hasher.combine(event.excludedAssetIDs.count)
-            hasher.combine(event.isExplicit)
-        }
-        return hasher.finalize()
     }
 }
