@@ -268,6 +268,12 @@ struct LightTableView: View {
         }
     }
 
+    /// How many clicks this one is part of. AppKit counts them; SwiftUI only
+    /// offers to wait for them.
+    private static func currentClickCount() -> Int {
+        NSApp.currentEvent?.clickCount ?? 1
+    }
+
     /// SwiftUI taps don't report modifier flags, so read them from AppKit.
     private static func currentModifiers() -> EventModifiers {
         let flags = NSEvent.modifierFlags
@@ -374,18 +380,26 @@ struct LightTableView: View {
                         value: [item.id: geo.frame(in: .named(Self.gridSpace))])
                 }
             )
-            .onTapGesture(count: 2) {
-                app.focusID = item.id
-                app.selectedIDs = [item.id]
-                app.isLoupePresented = true
-            }
-            // One tap handler that reads the keyboard itself. Separate
-            // modifier-qualified TapGestures also fire the unqualified one, so a
-            // Command-click toggled the photo and was then immediately replaced
-            // by a plain click on the same photo.
+            // One tap handler, which reads the mouse and the keyboard itself.
+            //
+            // Two reasons, and the second is the one that was being felt. A
+            // separate modifier-qualified TapGesture also fires the unqualified
+            // one, so a Command-click toggled the photo and was then
+            // immediately replaced by a plain click on it. And a `count: 2`
+            // gesture beside a `count: 1` one makes every single click wait out
+            // the double-click interval before anything happens — half a second
+            // of nothing, on every click in the grid, which is what "clicking
+            // feels sluggish" was. AppKit has already counted the clicks by the
+            // time this runs, so nothing has to be waited for.
             .onTapGesture {
-                app.click(item, in: items, modifiers: Self.currentModifiers())
                 isGridFocused = true
+                if Self.currentClickCount() > 1 {
+                    app.focusID = item.id
+                    app.selectedIDs = [item.id]
+                    app.isLoupePresented = true
+                } else {
+                    app.click(item, in: items, modifiers: Self.currentModifiers())
+                }
             }
             .contextMenu {
                 PhotoActionsMenu(item: item,

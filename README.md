@@ -458,6 +458,15 @@ A full rebuild — which now means changing album, filter or sort — is about 8
 in a release build. **Measure release builds**: the same work is 320 ms in a debug
 build, and it was a debug build that felt like treacle.
 
+And with all of that measured, clicking a photograph was *still* slow — while the
+log said the projection was taking 10 ms. Nothing on the way to the screen was
+slow; the click itself was being held. A `count: 2` tap gesture beside a `count: 1`
+one makes every single click wait out the double-click interval to find out
+whether a second one is coming. The grid has one tap handler now, which asks
+AppKit how many clicks this is (`NSApp.currentEvent?.clickCount`) — it has
+already counted them, so nothing needs waiting for. The same reading of AppKit
+was already there for modifier flags, for the same reason.
+
 ## Editing
 
 Adjustments are **one edit session with a single save**, not an Apply between
