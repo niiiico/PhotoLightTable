@@ -22,6 +22,7 @@ struct LightTableView: View {
     /// Observed so a changed asset's version reaches the cell that shows it.
     @ObservedObject private var loader = ThumbnailLoader.shared
     @Environment(\.modelContext) private var context
+    @Environment(\.surfaces) private var surfaces
     @EnvironmentObject private var clipboard: EditClipboard
     @FocusState private var isGridFocused: Bool
 
@@ -97,7 +98,7 @@ struct LightTableView: View {
         }
         // Neutral, and the same in either appearance: what the photographs are
         // judged against should not move when the system decides it is evening.
-        .background(Surfaces.table)
+        .background(surfaces.table)
         .focusable()
         .focused($isGridFocused)
         .focusEffectDisabled()
@@ -350,6 +351,7 @@ struct LightTableView: View {
     private func cell(for item: PhotoItem) -> some View {
         ThumbnailCell(item: item,
                       size: app.thumbnailSize,
+                      surfaces: surfaces,
                       rating: ratings.rating(for: item.id),
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,
@@ -491,7 +493,7 @@ struct LightTableView: View {
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 6)
-        .background(Surfaces.header)
+        .background(surfaces.header)
     }
 
     private var emptyState: some View {

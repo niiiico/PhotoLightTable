@@ -16,6 +16,7 @@ struct TouchGrid: View {
     let openFamilies: [[String]]
 
     @EnvironmentObject private var app: AppModel
+    @Environment(\.surfaces) private var surfaces
     @EnvironmentObject private var ratings: RatingStore
     @ObservedObject private var loader = ThumbnailLoader.shared
 
@@ -70,6 +71,7 @@ struct TouchGrid: View {
     private func cell(for item: PhotoItem) -> some View {
         ThumbnailCell(item: item,
                       size: cellSize,
+                      surfaces: surfaces,
                       rating: ratings.rating(for: item.id),
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,

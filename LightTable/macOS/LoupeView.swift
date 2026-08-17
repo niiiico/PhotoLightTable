@@ -49,6 +49,7 @@ struct LoupeView: View {
     /// A colour cast over the picture makes tonal decisions impossible.
     @State private var showsBrushPaint = true
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.surfaces) private var surfaces
 
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
@@ -80,7 +81,7 @@ struct LoupeView: View {
                 editPanel
             }
         }
-        .background(Surfaces.loupe)
+        .background(surfaces.loupe)
         .ignoresSafeArea()
         .focusable()
         .focused($isFocused)

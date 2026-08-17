@@ -9,6 +9,7 @@ struct ContentView: View {
     @EnvironmentObject private var syncer: AlbumSyncer
     @EnvironmentObject private var clipboard: EditClipboard
     @Environment(\.modelContext) private var context
+    @Environment(\.surfaces) private var surfaces
 
     @Query private var events: [LightTableEvent]
 
@@ -68,7 +69,7 @@ struct ContentView: View {
             // a bar tinted by the dark table under it, and each toolbar item on
             // a bright slab. The bar is told to draw dark instead, so its title
             // and its controls resolve against what they are actually on.
-            .toolbarBackground(Surfaces.rail, for: .windowToolbar)
+            .toolbarBackground(surfaces.rail, for: .windowToolbar)
             .toolbarColorScheme(.dark, for: .windowToolbar)
             .navigationTitle(title)
             .navigationSubtitle(subtitle)

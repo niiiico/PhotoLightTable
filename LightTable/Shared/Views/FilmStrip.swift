@@ -18,6 +18,8 @@ struct FilmStrip: View {
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
 
+    @Environment(\.surfaces) private var surfaces
+
     private let height: CGFloat = 62
 
     var body: some View {
@@ -29,7 +31,8 @@ struct FilmStrip: View {
                             FilmStripCell(item: item,
                                           height: height,
                                           isCurrent: item.id == currentID,
-                                          rating: ratingFor(item.id))
+                                          rating: ratingFor(item.id),
+                                          surfaces: surfaces)
                                 .id(item.id)
                                 .onTapGesture { onSelect(item.id) }
                         }
@@ -49,7 +52,7 @@ struct FilmStrip: View {
                 .help("Hide the strip (F)")
             }
             .frame(height: height + 12)
-            .background(Surfaces.mat)
+            .background(surfaces.mat)
             // Centred on the current photo rather than merely scrolled into
             // view: what is coming next matters as much as what is here, and an
             // edge-aligned strip shows only one side of it.
@@ -77,13 +80,16 @@ private struct FilmStripCell: View, Equatable {
     let height: CGFloat
     let isCurrent: Bool
     let rating: RatingValue
+    /// Passed in for the same reason as `ThumbnailCell`'s: this cell is
+    /// compared, and the comparison cannot see the environment.
+    let surfaces: Surfaces
 
     @State private var image: PlatformImage?
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 3)
-                .fill(Surfaces.table)
+                .fill(surfaces.table)
 
             if let image {
                 Image(platformImage: image)
@@ -131,5 +137,6 @@ private struct FilmStripCell: View, Equatable {
     static func == (lhs: FilmStripCell, rhs: FilmStripCell) -> Bool {
         lhs.item.id == rhs.item.id && lhs.isCurrent == rhs.isCurrent
             && lhs.height == rhs.height && lhs.rating == rhs.rating
+            && lhs.surfaces.levels == rhs.surfaces.levels
     }
 }

@@ -105,6 +105,10 @@ struct LightTableApp: App {
             rootView
                 .preferredColorScheme(
                     (AppearancePreference(rawValue: appearanceRaw) ?? .system).colorScheme)
+                // The greys the photographs sit on, resolved from the same
+                // preference. Injected here so every view that draws a surface
+                // reads one palette rather than each deciding for itself.
+                .modifier(SurfacePalette())
                 .environmentObject(library)
                 .environmentObject(app)
                 .environmentObject(ratings)

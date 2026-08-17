@@ -11,6 +11,7 @@ struct SidebarView: View {
 
     @EnvironmentObject private var app: AppModel
     @Environment(\.modelContext) private var context
+    @Environment(\.surfaces) private var surfaces
     @StateObject private var counts = EventCountCache()
 
     var body: some View {
@@ -66,8 +67,8 @@ struct SidebarView: View {
         // a table this dark, reads as the brightest thing in the window. Dark
         // is forced inside so the system's own label and selection colours
         // resolve against it, whatever the appearance preference says.
-        .background(Surfaces.rail)
-        .tint(Surfaces.selection)
+        .background(surfaces.rail)
+        .tint(surfaces.selection)
         .environment(\.colorScheme, .dark)
     }
 

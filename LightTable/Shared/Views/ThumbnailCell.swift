@@ -3,6 +3,10 @@ import SwiftUI
 struct ThumbnailCell: View, Equatable {
     let item: PhotoItem
     let size: CGFloat
+    /// Passed in rather than read from the environment: this view is compared
+    /// with `.equatable()`, and a value the comparison cannot see is a value
+    /// that would not repaint when the appearance changes under it.
+    let surfaces: Surfaces
     let rating: RatingValue
     let isSelected: Bool
     let isFocused: Bool
@@ -174,7 +178,7 @@ struct ThumbnailCell: View, Equatable {
     private var photo: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 3)
-                .fill(fillMode == .fit ? Surfaces.mat : Surfaces.mat.opacity(0.35))
+                .fill(fillMode == .fit ? surfaces.mat : surfaces.mat.opacity(0.35))
 
             if let image {
                 Image(platformImage: image)
@@ -318,5 +322,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.stackCount == rhs.stackCount
             && lhs.isStackExpanded == rhs.isStackExpanded
             && lhs.showsAssetID == rhs.showsAssetID
+            && lhs.surfaces.levels == rhs.surfaces.levels
     }
 }
