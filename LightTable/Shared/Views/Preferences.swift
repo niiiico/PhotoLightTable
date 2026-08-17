@@ -59,6 +59,7 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
 
 enum PreferenceKeys {
     static let thumbnailFillMode = "thumbnailFillMode"
+    static let loupeShowsFilmStrip = "loupeShowsFilmStrip"
     static let loupeFields = "loupeMetadataFields"
     static let appearance = "appearance"
 }

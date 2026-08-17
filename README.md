@@ -41,6 +41,7 @@ focused, so culling is a rhythm rather than press-then-arrow.
 | `C` | Crop, while editing |
 | `\` | Before/after comparison, while editing |
 | `Z` | Take back the last brush stroke (⇧`Z` puts it back) |
+| `F` | Show or hide the strip of neighbouring photos |
 | Esc | Unwind one layer: eyedropper → crop → editor (discarding) → close |
 
 While editing, the digits and the verdict keys belong to the panel's controls
@@ -239,6 +240,29 @@ describe the filter rather than the work: filter to Picked and you'd see
 The window title names the scope, so nothing repeats it. Its subtitle appears
 only when a filter is active — "Showing 12 of 120", the one count nothing else
 carries.
+
+## What the photographs sit on
+
+Three fixed neutral greys, not tied to the light/dark setting: the table behind
+the grid, a darker mat behind a photograph shown whole, and darker still in the
+loupe.
+
+Neutral because any colour in the surface shifts the white balance of everything
+laid on it. Fixed because a surface that changes with the appearance means the
+same photograph looks different on Tuesday, which is the opposite of what a
+light table is for. Two shades rather than one so the edge of a pale photograph
+is legible without drawing a border around it.
+
+## The strip in the loupe
+
+A row of neighbouring frames along the bottom, centred on the one you are
+looking at. The loupe shows a single photograph, which is the point, but
+arrowing through a take gives no sense of where you are in it, whether the next
+frame is the same moment, or how much is left.
+
+`F` hides it, or the chevron at its end, and the choice is remembered. It is
+deliberately small: context rather than a second grid, since anything big enough
+to judge from would compete with the photograph above it.
 
 ## Sorting
 

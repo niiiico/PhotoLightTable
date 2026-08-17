@@ -95,6 +95,9 @@ struct LightTableView: View {
             .onAppear { app.columnCount = columns }
             .onChange(of: columns) { _, newValue in app.columnCount = newValue }
         }
+        // Neutral, and the same in either appearance: what the photographs are
+        // judged against should not move when the system decides it is evening.
+        .background(Surfaces.table)
         .focusable()
         .focused($isGridFocused)
         .focusEffectDisabled()

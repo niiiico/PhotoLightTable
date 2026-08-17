@@ -20,6 +20,9 @@ struct LoupeView: View {
     @State private var isLoading = false
     @State private var metadata: PhotoMetadata = .empty
     @AppStorage(PreferenceKeys.loupeFields) private var fieldsRaw = LoupeFields.defaultValue
+    /// Remembered, because whether the strip helps or intrudes is a working
+    /// preference rather than a per-photo decision.
+    @AppStorage(PreferenceKeys.loupeShowsFilmStrip) private var showsFilmStrip = true
 
     @StateObject private var zoomState = LoupeZoom()
     @StateObject private var edit = PhotoEditSession()
@@ -57,6 +60,14 @@ struct LoupeView: View {
             VStack(spacing: 0) {
                 topBar
                 photoArea
+                if showsFilmStrip {
+                    Divider()
+                    FilmStrip(items: items,
+                              currentID: current?.id,
+                              onSelect: { app.focusID = $0 },
+                              onDismiss: { showsFilmStrip = false })
+                }
+
                 // Metadata stays put while editing: aperture and shutter are
                 // part of judging an adjustment, not something to swap out for
                 // the controls.
@@ -68,7 +79,7 @@ struct LoupeView: View {
                 editPanel
             }
         }
-        .background(Color.black)
+        .background(Surfaces.loupe)
         .ignoresSafeArea()
         .focusable()
         .focused($isFocused)
@@ -1452,6 +1463,11 @@ struct LoupeView: View {
 
         if character == "\\", isEditing, edit.hasVisibleChange {
             setComparison(comparison == .split ? .off : .split)
+            return .handled
+        }
+
+        if character == "f" {
+            showsFilmStrip.toggle()
             return .handled
         }
 

@@ -174,7 +174,7 @@ struct ThumbnailCell: View, Equatable {
     private var photo: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 3)
-                .fill(fillMode == .fit ? Color.black : Color.black.opacity(0.25))
+                .fill(fillMode == .fit ? Surfaces.mat : Surfaces.mat.opacity(0.35))
 
             if let image {
                 Image(platformImage: image)
