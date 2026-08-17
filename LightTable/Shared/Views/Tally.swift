@@ -11,16 +11,25 @@ struct ScopeTally {
 
     init() {}
 
-    @MainActor
-    init(items: [PhotoItem], ratings: RatingStore) {
-        total = items.count
-        for item in items {
-            switch ratings.rating(for: item.id).pick {
+    /// Counted from the verdicts rather than from the photographs.
+    ///
+    /// The store holds a row only for a photograph that has been judged — a few
+    /// hundred in a library of ninety thousand — so this walks hundreds where
+    /// asking after every photograph in the scope walked all of them, once per
+    /// keystroke while culling. `scopedIDs` is built with the rest of the
+    /// projection, and only when the scope itself changes.
+    init(total: Int, scopedIDs: Set<String>, verdicts: [String: RatingValue]) {
+        self.total = total
+        for (id, value) in verdicts where scopedIDs.contains(id) {
+            switch value.pick {
             case .picked: picked += 1
             case .rejected: rejected += 1
-            case .unrated: unrated += 1
+            case .unrated: break
             }
         }
+        // Everything not spoken for. A verdict that was set and then cleared
+        // leaves a row behind, so unrated cannot be counted directly.
+        unrated = max(0, total - picked - rejected)
     }
 
     var progress: Double {

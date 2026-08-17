@@ -18,7 +18,14 @@ struct TimelineData {
 /// here depends on the selection, so the cache key deliberately excludes it.
 @MainActor
 final class LibraryProjection: ObservableObject {
-    private struct Key: Equatable {
+    /// What the grid's contents depend on.
+    ///
+    /// The verdicts are in here only when a filter is reading them. Otherwise
+    /// picking a photograph changes nothing about which photographs are shown
+    /// or how they are grouped — and rebuilding all of that on every P and X,
+    /// which is what including the revision unconditionally meant, is half a
+    /// second of the culling rhythm gone.
+    private struct StructureKey: Equatable {
         var selection: LibrarySelection
         var pickFilter: PickFilter
         var showsOnlyFamilies: Bool
@@ -57,40 +64,72 @@ final class LibraryProjection: ObservableObject {
     /// cell scrolls into view. It changes only when the sections do.
     private(set) var timeline = TimelineData()
 
-    private var key: Key?
+    /// The ids in scope, for counting verdicts against without walking the
+    /// library again.
+    private var scopedIDs: Set<String> = []
+
+    private var structureKey: StructureKey?
+    private var tallyKey: (structure: StructureKey, ratingsRevision: Int)?
 
     func refresh(items: [PhotoItem],
                  libraryVersion: Int,
                  events: [LightTableEvent],
                  app: AppModel,
                  ratings: RatingStore) {
-        let newKey = Key(selection: app.selection,
-                         pickFilter: app.pickFilter,
-                         showsOnlyFamilies: app.showsOnlyFamilies,
-                         colorFilter: app.colorFilter,
-                         sortOrder: app.sortOrder,
-                         libraryVersion: libraryVersion,
-                         ratingsRevision: ratings.revision,
-                         variantsRevision: ratings.variantsRevision,
-                         expandedStacks: app.expandedStacks,
-                         eventsStamp: EventMembership.stamp(of: events))
-        guard newKey != key else { return }
-        key = newKey
+        // Only a filter that reads verdicts makes the contents depend on them.
+        let filterReadsVerdicts = app.pickFilter != .all || !app.colorFilter.isEmpty
+        let newKey = StructureKey(selection: app.selection,
+                                  pickFilter: app.pickFilter,
+                                  showsOnlyFamilies: app.showsOnlyFamilies,
+                                  colorFilter: app.colorFilter,
+                                  sortOrder: app.sortOrder,
+                                  libraryVersion: libraryVersion,
+                                  ratingsRevision: filterReadsVerdicts ? ratings.revision : 0,
+                                  variantsRevision: ratings.variantsRevision,
+                                  expandedStacks: app.expandedStacks,
+                                  eventsStamp: EventMembership.stamp(of: events))
 
-        scoped = app.scope(items, events: events)
-        let ordered = app.sort(app.filter(scoped, ratings: ratings))
-        let stacked = Self.stacked(ordered,
-                                   rootOf: { ratings.rootAsset(of: $0) },
-                                   variantsOf: { ratings.variants(of: $0) },
-                                   isExpanded: { app.expandedStacks.contains($0) })
+        if newKey != structureKey {
+            structureKey = newKey
+            rebuild(items: items, events: events, app: app, ratings: ratings)
+        }
+
+        // Cheap, and the only thing a verdict actually changes when no filter
+        // is reading them.
+        let newTallyKey = (newKey, ratings.revision)
+        if tallyKey == nil || tallyKey! != newTallyKey {
+            tallyKey = newTallyKey
+            tally = ScopeTally(total: scoped.count,
+                               scopedIDs: scopedIDs,
+                               verdicts: ratings.ratings)
+        }
+    }
+
+    private func rebuild(items: [PhotoItem],
+                         events: [LightTableEvent],
+                         app: AppModel,
+                         ratings: RatingStore) {
+        Debug.time("scope") { scoped = app.scope(items, events: events) }
+        let ordered = Debug.time("filter+sort") { app.sort(app.filter(scoped, ratings: ratings)) }
+        Debug.time("scoped ids") { scopedIDs = Set(scoped.map(\.id)) }
+        let stacked = Debug.time("stack") {
+            Self.stacked(ordered,
+                         isFamilyMember: { ratings.isInFamily($0) },
+                         rootOf: { ratings.rootAsset(of: $0) },
+                         variantsOf: { ratings.variants(of: $0) },
+                         isExpanded: { app.expandedStacks.contains($0) })
+        }
         visible = stacked.items
         stackSizes = stacked.sizes
         openFamilies = stacked.openFamilies
-        tally = ScopeTally(items: scoped, ratings: ratings)
-        sections = PhotoLibraryService.groupByDay(visible,
-                                                  oldestFirst: app.sortOrder == .oldestFirst)
+        Debug.time("group by day") {
+            sections = PhotoLibraryService.groupByDay(visible,
+                                                      oldestFirst: app.sortOrder == .oldestFirst)
+        }
+        Debug.time("timeline") {
         timeline = TimelineData(ticks: TimelineIndex.ticks(for: sections.map { ($0.id, $0.items.count) }),
                                 counts: sections.map(\.items.count))
+        }
         // Taken from the ends rather than by scanning: the sections are already
         // sorted, whichever way round.
         if let first = sections.first?.id, let last = sections.last?.id {
@@ -118,20 +157,42 @@ final class LibraryProjection: ObservableObject {
     /// `nonisolated` because it reads nothing but its arguments. The class is
     /// `@MainActor` for the caches it holds; this rule has no such need, and
     /// inheriting the isolation would put it out of reach of a test.
+    /// `isFamilyMember` is asked first about every photograph, and nearly all
+    /// of them answer no: in a library of ninety thousand, a few dozen have
+    /// variants. Indexing all of them by id — which is what this did — cost a
+    /// third of a second on every album change and every keystroke that
+    /// invalidated the grid. Only what can possibly stack is indexed now, and
+    /// everything else goes straight through.
     nonisolated static func stacked<Item: Identifiable>(
         _ items: [Item],
+        isFamilyMember: (String) -> Bool,
         rootOf: (String) -> String,
         variantsOf: (String) -> [String],
         isExpanded: (String) -> Bool
     ) -> (items: [Item], sizes: [String: Int], openFamilies: [[String]]) where Item.ID == String {
-        let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var byID: [String: Item] = [:]
+        for item in items where isFamilyMember(item.id) {
+            // First wins, as before: a duplicated id would otherwise change
+            // which photo stands for the family.
+            if byID[item.id] == nil { byID[item.id] = item }
+        }
+        // Nothing here shares its pixels with anything else: the grid is the
+        // list it was handed.
+        guard !byID.isEmpty else { return (items, [:], []) }
+
         var emitted = Set<String>()
         var result: [Item] = []
         var sizes: [String: Int] = [:]
         var openFamilies: [[String]] = []
         result.reserveCapacity(items.count)
 
-        for item in items where !emitted.contains(item.id) {
+        for item in items {
+            // Not in a family: it stands for itself, wherever it fell.
+            guard isFamilyMember(item.id) else {
+                result.append(item)
+                continue
+            }
+            guard !emitted.contains(item.id) else { continue }
             let root = rootOf(item.id)
             // Held back so it can be shown with its source below.
             if root != item.id, byID[root] != nil { continue }
@@ -172,7 +233,7 @@ final class LibraryProjection: ObservableObject {
         }
 
         // Anything held back whose source turned out not to be here after all.
-        for item in items where !emitted.contains(item.id) {
+        for item in items where isFamilyMember(item.id) && !emitted.contains(item.id) {
             result.append(item)
         }
         return (result, sizes, openFamilies)

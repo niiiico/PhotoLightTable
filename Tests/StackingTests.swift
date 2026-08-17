@@ -24,13 +24,17 @@ private func stack(_ items: [FakePhoto],
 -> (items: [FakePhoto], sizes: [String: Int], openFamilies: [[String]]) {
     var rootOf: [String: String] = [:]
     var variantsOf: [String: [String]] = [:]
+    var members: Set<String> = []
     for family in families {
         variantsOf[family.root] = family.variants
+        members.insert(family.root)
         for variant in family.variants {
             rootOf[variant] = family.root
+            members.insert(variant)
         }
     }
     return LibraryProjection.stacked(items,
+                                     isFamilyMember: { members.contains($0) },
                                      rootOf: { rootOf[$0] ?? $0 },
                                      variantsOf: { variantsOf[$0] ?? [] },
                                      isExpanded: { expanded.contains($0) })

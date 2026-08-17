@@ -52,6 +52,10 @@ struct LightTableView: View {
     private static let scrollSpace = "lightTableScroll"
 
     var body: some View {
+        Debug.time("grid body") { gridBody }
+    }
+
+    private var gridBody: some View {
         GeometryReader { geo in
             let railWidth = showsRail ? TimelineRail.width : 0
             let columns = columnCount(for: geo.size.width - railWidth)
@@ -112,6 +116,10 @@ struct LightTableView: View {
                 }
                 .onChange(of: app.focusID) { _, newValue in
                     guard let newValue else { return }
+                    guard app.revealsFocus else {
+                        app.revealsFocus = true
+                        return
+                    }
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(newValue, anchor: .center)
                     }
@@ -384,6 +392,7 @@ struct LightTableView: View {
                                  targets: app.selectedIDs.contains(item.id)
                                      ? app.targetIDs() : [item.id],
                                  items: items,
+                                 events: events,
                                  stack: stackInfo(for: item),
                                  shows: .inGrid,
                                  onNewEvent: onNewEvent,

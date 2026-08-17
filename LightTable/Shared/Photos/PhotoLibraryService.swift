@@ -170,15 +170,50 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     /// Photos within a day keep the order they arrived in, so only the sections
     /// need reordering to match the caller's sort.
     static func groupByDay(_ items: [PhotoItem], oldestFirst: Bool) -> [DaySection] {
-        let cal = Calendar.current
-        var buckets: [Date: [PhotoItem]] = [:]
+        grouped(items, dateOf: { $0.creationDate }, oldestFirst: oldestFirst)
+            .map { DaySection(id: $0.day, items: $0.items) }
+    }
+
+    /// Groups a run of photographs into days.
+    ///
+    /// Written for a list that is already in date order, which is what the grid
+    /// hands it: the day of the last photograph is nearly always the day of this
+    /// one, so the common step is a date comparison and an append. Anything that
+    /// arrives out of order — a variant held back from a source that is not
+    /// showing, which the stacking pass puts at the end — still finds its own
+    /// day through the index rather than opening a second section for it.
+    ///
+    /// Generic over the item so the rule can be exercised without `PHAsset`s,
+    /// which cannot be made with a creation date.
+    /// `nonisolated` because it reads nothing but its arguments — the class is
+    /// on the main actor for the library it holds, and this rule has no such
+    /// need. Inheriting the isolation would put it out of reach of a test.
+    nonisolated static func grouped<T>(_ items: [T],
+                                       dateOf: (T) -> Date?,
+                                       oldestFirst: Bool,
+                                       calendar: Calendar = .current) -> [(day: Date, items: [T])] {
+        var keys = DayKeys(calendar: calendar)
+        var days: [(day: Date, items: [T])] = []
+        var indexByDay: [Date: Int] = [:]
+        var currentDay: Date?
+        var currentIndex = 0
+
         for item in items {
-            let day = cal.startOfDay(for: item.creationDate ?? .distantPast)
-            buckets[day, default: []].append(item)
+            let day = keys.day(of: dateOf(item) ?? .distantPast)
+            if day != currentDay {
+                if let existing = indexByDay[day] {
+                    currentIndex = existing
+                } else {
+                    days.append((day, []))
+                    currentIndex = days.count - 1
+                    indexByDay[day] = currentIndex
+                }
+                currentDay = day
+            }
+            days[currentIndex].items.append(item)
         }
-        return buckets
-            .map { DaySection(id: $0.key, items: $0.value) }
-            .sorted { oldestFirst ? $0.id < $1.id : $0.id > $1.id }
+
+        return days.sorted { oldestFirst ? $0.day < $1.day : $0.day > $1.day }
     }
 }
 

@@ -418,6 +418,46 @@ value must not mean watching it*. `@State` keeps a reference-type box alive
 without subscribing the view to it, and whoever actually draws from it takes it
 as an `@ObservedObject`.
 
+### And then the clicks
+
+Every click taking about a second turned out to be four things at once. With
+`LIGHTTABLE_DEBUG=1`, `Debug.time` prints anything over 8 ms, which is how each
+of them was found rather than guessed at:
+
+**A verdict rebuilt the whole grid.** `LibraryProjection`'s cache key held the
+ratings revision unconditionally, so pressing P re-scoped, re-filtered,
+re-stacked and re-grouped ninety thousand photographs — the entire culling
+rhythm, at half a second a keystroke. The key is split: the ratings revision is
+in the *structure* key only when a filter is actually reading verdicts, and the
+tally has a key of its own.
+
+**The tally walked the library.** It asked after the verdict of every photograph
+in the scope. The store holds a row only for a photograph that has been judged —
+a few hundred of ninety thousand — so it now counts from the verdicts and takes
+`unrated` as the remainder, against a set of scoped ids built with the rest of
+the projection.
+
+**Stacking indexed everything.** `stacked` built a dictionary of all ninety
+thousand photographs to find the few dozen with variants. `RatingStore.isInFamily`
+answers from a set, and anything not in a family goes straight through: 303 ms →
+37 ms.
+
+**A context menu per cell held a `@Query`.** `PhotoActionsMenu` fetched the events
+itself, which is a SwiftData query per grid cell, set up and torn down as cells
+scroll. The hosts have the events already and pass them in.
+
+Two smaller ones: grouping asked `Calendar.startOfDay` ninety thousand times when
+photographs arrive in date order and a day holds hundreds (`DayKeys` keeps the
+current day's interval and only asks when a date falls outside it), and clicking
+a photograph animated the grid to centre it — pulling the cells out from under
+the hand that just clicked, and paying for a scroll animation every time.
+`AppModel.revealsFocus` says whether a focus change deserves a scroll: the
+keyboard, a jump and a scrub do; a click does not.
+
+A full rebuild — which now means changing album, filter or sort — is about 85 ms
+in a release build. **Measure release builds**: the same work is 320 ms in a debug
+build, and it was a debug build that felt like treacle.
+
 ## Editing
 
 Adjustments are **one edit session with a single save**, not an Apply between

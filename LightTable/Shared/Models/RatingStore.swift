@@ -27,6 +27,12 @@ final class RatingStore: ObservableObject {
     /// descend from.
     private var familyByRoot: [String: [String]] = [:]
     private var rootByAsset: [String: String] = [:]
+    /// Everything that belongs to a family of more than one, sources included.
+    ///
+    /// Kept as a set so the grid can ask the question once per photograph while
+    /// laying out a library of ninety thousand: nearly all of them are in no
+    /// family at all, and that answer has to be free.
+    private var familyMembers: Set<String> = []
 
     /// Set while folding remote changes in, so applying them doesn't schedule
     /// another sync and bounce the same edit back at Photos.
@@ -97,6 +103,7 @@ final class RatingStore: ObservableObject {
             family[root, default: []].append(row.assetID)
         }
         familyByRoot = family
+        familyMembers = Set(family.keys).union(family.values.joined())
         variantsRevision &+= 1
     }
 
@@ -125,6 +132,13 @@ final class RatingStore: ObservableObject {
         try? context.save()
         reloadVariants()
     }
+
+    /// Whether this photograph shares its pixels with any other.
+    ///
+    /// The fast rejection for anything that walks the whole library: a photo
+    /// that answers no needs no family lookup, no root resolution and no place
+    /// in a stacking index.
+    func isInFamily(_ assetID: String) -> Bool { familyMembers.contains(assetID) }
 
     /// The photo everything in this family descends from.
     func rootAsset(of assetID: String) -> String { rootByAsset[assetID] ?? assetID }

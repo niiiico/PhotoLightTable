@@ -10,6 +10,9 @@ import SwiftUI
 /// something you have to mentally subtract.
 struct LoupeView: View {
     let items: [PhotoItem]
+    /// For the filmstrip's "add to event". Passed down rather than queried, for
+    /// the reason `PhotoActionsMenu` gives.
+    let events: [LightTableEvent]
     /// The album list beside the photograph. Kept open by default — knowing
     /// which album you are working through is part of knowing what you are
     /// looking at — and folded away from the button in the top bar, since the
@@ -90,6 +93,7 @@ struct LoupeView: View {
                                   PhotoActionsMenu(item: item,
                                                    targets: [item.id],
                                                    items: items,
+                                                   events: events,
                                                    shows: .inFilmStrip,
                                                    onNewEvent: { _ in },
                                                    onError: { editError = $0 })

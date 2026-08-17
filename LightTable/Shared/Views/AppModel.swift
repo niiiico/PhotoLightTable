@@ -105,6 +105,15 @@ final class AppModel: ObservableObject {
     /// land on the newest photograph.
     private var scopeMemory = ScopeMemory<LibrarySelection>()
 
+    /// Whether the next focus change should pull the grid to it.
+    ///
+    /// True for the keyboard, a jump, a scrub — the photograph may be a
+    /// thousand cells away. False for a click, which is on a photograph already
+    /// under the pointer: centring that one animates the grid out from under
+    /// the hand that just clicked it, and pays for a scroll animation on every
+    /// single click. Not published; nothing is drawn from it.
+    var revealsFocus = true
+
     /// Families opened out in the grid, by the id of the photo they share
     /// pixels with.
     ///
@@ -310,6 +319,7 @@ final class AppModel: ObservableObject {
     }
 
     func click(_ item: PhotoItem, in items: [PhotoItem], modifiers: EventModifiers) {
+        revealsFocus = false
         if modifiers.contains(.command) {
             if selectedIDs.contains(item.id) { selectedIDs.remove(item.id) }
             else { selectedIDs.insert(item.id) }

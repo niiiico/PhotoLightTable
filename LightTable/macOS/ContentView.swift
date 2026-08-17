@@ -28,13 +28,19 @@ struct ContentView: View {
     var body: some View {
         // Recomputed only when something it actually depends on moves — notably
         // not the selection, which changes on every step of a drag.
-        projection.refresh(items: library.items,
-                           libraryVersion: library.version,
-                           events: events,
-                           app: app,
-                           ratings: ratings)
+        Debug.time("projection") {
+            projection.refresh(items: library.items,
+                               libraryVersion: library.version,
+                               events: events,
+                               app: app,
+                               ratings: ratings)
+        }
 
-        return NavigationSplitView(columnVisibility: $columns) {
+        return Debug.time("window body") { window }
+    }
+
+    private var window: some View {
+        NavigationSplitView(columnVisibility: $columns) {
             SidebarView(events: events,
                         allItems: library.items,
                         editingEvent: Binding(
@@ -75,7 +81,7 @@ struct ContentView: View {
             // moment the loupe opened. It can still be folded away from inside.
             .overlay {
                 if app.isLoupePresented {
-                    LoupeView(items: visibleItems, columns: $columns)
+                    LoupeView(items: visibleItems, events: events, columns: $columns)
                         .transition(.opacity)
                 }
             }

@@ -1,5 +1,4 @@
 #if os(macOS)
-import SwiftData
 import SwiftUI
 
 /// Everything you can do to a photograph, wherever the photograph is.
@@ -41,6 +40,13 @@ struct PhotoActionsMenu: View {
     let targets: [String]
     /// The list "select related" works within.
     let items: [PhotoItem]
+    /// Passed in rather than fetched.
+    ///
+    /// This menu is attached to every cell in the grid, and a `@Query` inside it
+    /// is a SwiftData fetch per cell — set up and torn down as cells scroll,
+    /// while the user is waiting for a click to register. The hosts all have the
+    /// events already.
+    var events: [LightTableEvent] = []
     var stack: Stack? = nil
     let shows: Shows
     var onNewEvent: ([String]) -> Void = { _ in }
@@ -51,7 +57,6 @@ struct PhotoActionsMenu: View {
     @EnvironmentObject private var library: PhotoLibraryService
     @EnvironmentObject private var clipboard: EditClipboard
     @Environment(\.modelContext) private var context
-    @Query private var events: [LightTableEvent]
 
     var body: some View {
         // Shortcuts are spelled into the titles rather than attached with
