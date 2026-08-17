@@ -72,7 +72,15 @@ struct LoupeView: View {
                               currentID: current?.id,
                               ratingFor: { ratings.rating(for: $0) },
                               onSelect: { app.focusID = $0 },
-                              onDismiss: { showsFilmStrip = false })
+                              onDismiss: { showsFilmStrip = false },
+                              menuFor: { item in
+                                  PhotoActionsMenu(item: item,
+                                                   targets: [item.id],
+                                                   items: items,
+                                                   shows: .inFilmStrip,
+                                                   onNewEvent: { _ in },
+                                                   onError: { editError = $0 })
+                              })
                 }
 
                 // Metadata stays put while editing: aperture and shutter are
@@ -156,6 +164,15 @@ struct LoupeView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .contentShape(Rectangle())
+            .contextMenu {
+                if let current {
+                    PhotoActionsMenu(item: current,
+                                     targets: [current.id],
+                                     items: items,
+                                     shows: .inLoupe,
+                                     onError: { editError = $0 })
+                }
+            }
             .overlay(alignment: .top) {
                 if isFindingSubject {
                     // Subject lifting takes about half a second on a full-size

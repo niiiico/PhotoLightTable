@@ -9,7 +9,7 @@ import SwiftUI
 ///
 /// Deliberately small and quiet. It is context, not a second grid, and anything
 /// large enough to judge from would be competing with the photograph above it.
-struct FilmStrip: View {
+struct FilmStrip<Menu: View>: View {
     let items: [PhotoItem]
     let currentID: String?
     /// Verdict per photo, so the strip can show what has been decided without
@@ -17,6 +17,9 @@ struct FilmStrip: View {
     let ratingFor: (String) -> RatingValue
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
+    /// The right-click menu for a frame. Supplied by the host rather than built
+    /// here: the strip is shared with iOS, and the menu is the desktop's.
+    @ViewBuilder var menuFor: (PhotoItem) -> Menu
 
     @Environment(\.surfaces) private var surfaces
 
@@ -35,6 +38,7 @@ struct FilmStrip: View {
                                           surfaces: surfaces)
                                 .id(item.id)
                                 .onTapGesture { onSelect(item.id) }
+                                .contextMenu { menuFor(item) }
                         }
                     }
                     .padding(.horizontal, 8)

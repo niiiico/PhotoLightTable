@@ -298,8 +298,12 @@ sections the grid is showing, so a filtered view jumps within what survives the
 filter.
 
 **The rail beside the grid.** When you don't. Years — or months, once the whole
-span fits in about eighteen of them — marked down the right-hand edge, drag to
-fly through with the day under the pointer in a callout, release to land.
+span fits in about eighteen of them — marked down the right-hand edge. Drag it
+and a callout follows the pointer with the day and the first frame of it; the
+grid moves once, on release. Scrolling live meant tearing a lazy grid of ninety
+thousand photographs to a new position on every point of the drag, which is as
+heavy as it sounds — and the thumbnail is better feedback anyway, since a date
+alone is not what you recognise an afternoon by.
 
 The scale is drawn in *photographs, not in time*: a tick sits at the fraction of
 the library that day begins at. A fortnight of heavy shooting is a longer stretch
@@ -355,6 +359,29 @@ nothing on files without EXIF.
 Metadata comes from the original file via `CGImageSource`, which parses headers
 lazily and never decodes pixels. Results are cached per asset. The 35mm
 equivalent is only appended when it actually differs from the true focal length.
+
+## The right-click menu
+
+One menu — `PhotoActionsMenu` — on the grid, on the filmstrip, and on the
+photograph in the loupe. It began as the grid's, and a second copy of it for the
+loupe would have drifted from the first inside a week.
+
+What differs is only which items make sense where, which `Shows` states:
+
+| | Grid | Filmstrip | Loupe |
+| --- | --- | --- | --- |
+| Verdicts, colours, duplicate, split, remove, copy/paste adjustments | ✓ | ✓ | ✓ |
+| Add to Event, Remove from event | ✓ | ✓ | |
+| Select Related | ✓ | ✓ | |
+| Open in Loupe | ✓ | | |
+| Show all versions | ✓ | | |
+
+Open in Loupe goes wherever the loupe is already open. Add to Event and Select
+Related act on a grid selection there is no way to see from under the loupe, so
+they go there too but stay on the strip, where you are pointing at one frame of
+many. Stacking is the grid's alone: it is the projection that knows how many
+members of a family survived the filter, and nothing else is in a position to
+say.
 
 ## Editing
 

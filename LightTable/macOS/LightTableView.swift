@@ -114,9 +114,8 @@ struct LightTableView: View {
                 if showsRail {
                     TimelineRail(ticks: TimelineIndex.ticks(for: timelineDays),
                                  position: scrollPosition,
-                                 dayFor: { day(atFraction: $0) },
-                                 onScrub: { scrub(to: $0, proxy: proxy, landing: false) },
-                                 onLand: { scrub(to: $0, proxy: proxy, landing: true) })
+                                 previewFor: { preview(atFraction: $0) },
+                                 onLand: { land(at: $0, proxy: proxy) })
                 }
                 }
             }
@@ -203,60 +202,14 @@ struct LightTableView: View {
             }
     }
 
-    /// A plain copy: the same pixels under a new asset, joined to the family so
-    /// it stacks with the photo it came from.
-    ///
-    /// Neutral rather than carrying an adjustment, since there is no session
-    /// open here to take a recipe from — this is "another one of these to work
-    /// on", not "save what I have done".
-    private func duplicate(_ item: PhotoItem) {
-        Task {
-            do {
-                _ = try await PhotoVariants.create(from: item,
-                                                   applying: currentRecipe(of: item),
-                                                   label: "Copy",
-                                                   context: context,
-                                                   library: library)
-                ratings.reloadVariants()
-                app.revealFamily(of: ratings.rootAsset(of: item.id))
-            } catch {
-                actionError = error.localizedDescription
-            }
-        }
-    }
-
-    /// Said in the menu rather than in a dialog of our own.
-    ///
-    /// macOS asks for confirmation itself before deleting anything from the
-    /// library, and it cannot be waived. Asking first as well meant two dialogs
-    /// for one decision — the second of which is the one that actually decides.
-    /// This is the part the system prompt does not say, so it goes where it can
-    /// be read before committing to anything.
-    private func removalMessage(for item: PhotoItem) -> String {
-        let name = ratings.variantLabel(for: item.id) ?? "This version"
-        return """
-        “\(name)” goes to Recently Deleted in Photos, where it can be brought \
-        back for 30 days. The photo it was made from is not touched.
-        """
-    }
-
-    /// Removes a variant from the library.
-    ///
-    /// The only thing in this app that deletes, and deliberately narrow: it is
-    /// offered for photos the app itself created, never for an original. See
-    /// docs/adr-001, which this amends.
-    private func remove(_ item: PhotoItem) {
-        Task {
-            do {
-                try await PhotoVariants.remove(item, context: context, ratings: ratings)
-                // No scope should try to return to a photograph that has left
-                // the library.
-                app.forgetRemembered(item.id)
-                await library.reload()
-            } catch {
-                actionError = error.localizedDescription
-            }
-        }
+    /// The stack behind the menu's "show all versions" item, when this photo
+    /// is in one that is showing. Only the grid has this: it is the projection
+    /// that knows how many members of a family survived the filter.
+    private func stackInfo(for item: PhotoItem) -> PhotoActionsMenu.Stack? {
+        guard let root = stackRoot(of: item.id), let count = stackSizes[root] else { return nil }
+        return PhotoActionsMenu.Stack(count: count,
+                                      isExpanded: app.expandedStacks.contains(root),
+                                      toggle: { toggleStack(containing: item.id) })
     }
 
     /// The stack this photo belongs to, when it is in one that is showing.
@@ -290,43 +243,6 @@ struct LightTableView: View {
         }
     }
 
-    /// The photo as it stands, adjustments included.
-    ///
-    /// There is no editing session open in the grid, so the recipe is read back
-    /// from the photo itself. Passing a neutral one instead built the copy from
-    /// the original pixels and threw the photo's own edit away — a split of an
-    /// edited photo came out looking nothing like what was on screen.
-    private func currentRecipe(of item: PhotoItem) async -> PhotoEditRecipe {
-        await PhotoEditSession.recipe(of: item.asset) ?? .neutral
-    }
-
-    /// Splitting from the grid uses the photo as it stands.
-    private func splitLeftRight(_ item: PhotoItem) {
-        Task {
-            do {
-                _ = try await PhotoVariants.splitLeftRight(item,
-                                                           applying: currentRecipe(of: item),
-                                                           context: context,
-                                                           library: library)
-                ratings.reloadVariants()
-                app.revealFamily(of: ratings.rootAsset(of: item.id))
-            } catch {
-                actionError = error.localizedDescription
-            }
-        }
-    }
-
-    private func photoItems(for ids: [String]) -> [PhotoItem] {
-        let wanted = Set(ids)
-        return items.filter { wanted.contains($0.id) }
-    }
-
-    private func pasteTitle(_ targets: [String], includingCrop: Bool) -> String {
-        let noun = targets.count == 1 ? "Photo" : "\(targets.count) Photos"
-        return includingCrop ? "Paste Adjustments and Crop to \(noun)"
-                             : "Paste Adjustments to \(noun)"
-    }
-
     /// SwiftUI taps don't report modifier flags, so read them from AppKit.
     private static func currentModifiers() -> EventModifiers {
         let flags = NSEvent.modifierFlags
@@ -345,30 +261,6 @@ struct LightTableView: View {
         isGridFocused = true
     }
 
-    // MARK: - Event membership
-
-    /// Pins photos into an event regardless of their date, and lifts any
-    /// previous exclusion so re-adding a removed photo works.
-    private func add(_ ids: [String], to event: LightTableEvent) {
-        guard !ids.isEmpty else { return }
-        var pinned = Set(event.pinnedAssetIDs)
-        pinned.formUnion(ids)
-        event.pinnedAssetIDs = Array(pinned)
-        event.excludedAssetIDs.removeAll { ids.contains($0) }
-        try? context.save()
-    }
-
-    /// Excludes photos from an event. Needed as well as unpinning, because a
-    /// photo can also be a member purely by falling inside the date range.
-    private func remove(_ ids: [String], from event: LightTableEvent) {
-        guard !ids.isEmpty else { return }
-        event.pinnedAssetIDs.removeAll { ids.contains($0) }
-        var excluded = Set(event.excludedAssetIDs)
-        excluded.formUnion(ids)
-        event.excludedAssetIDs = Array(excluded)
-        try? context.save()
-    }
-
     private func gridItems(count: Int) -> [GridItem] {
         Array(repeating: GridItem(.fixed(app.thumbnailSize), spacing: spacing), count: count)
     }
@@ -381,22 +273,21 @@ struct LightTableView: View {
         sections.map { ($0.id, $0.items.count) }
     }
 
-    private func day(atFraction fraction: Double) -> Date? {
-        TimelineIndex.index(atFraction: fraction, in: sections.map(\.items.count))
-            .map { sections[$0].id }
-    }
-
-    /// Follows the scrubber, and on release leaves the focus where it landed so
-    /// the keyboard carries on from there — and so the scope remembers it.
-    private func scrub(to fraction: Double, proxy: ScrollViewProxy, landing: Bool) {
+    /// The day a fraction of the way down, and the frame that opens it.
+    private func preview(atFraction fraction: Double) -> (day: Date, item: PhotoItem)? {
         guard let index = TimelineIndex.index(atFraction: fraction,
                                               in: sections.map(\.items.count)),
-              let target = sections[index].items.first else { return }
+              let first = sections[index].items.first else { return nil }
+        return (sections[index].id, first)
+    }
+
+    /// Where the scrubber was let go. Setting the focus leaves the keyboard
+    /// where you landed — and has the scope remember it.
+    private func land(at fraction: Double, proxy: ScrollViewProxy) {
+        guard let target = preview(atFraction: fraction)?.item else { return }
         proxy.scrollTo(target.id, anchor: .center)
-        if landing {
-            app.focusID = target.id
-            app.selectedIDs = [target.id]
-        }
+        app.focusID = target.id
+        app.selectedIDs = [target.id]
     }
 
     /// How far down the content is scrolled, 0 to 1.
@@ -448,92 +339,16 @@ struct LightTableView: View {
                 app.click(item, in: items, modifiers: Self.currentModifiers())
                 isGridFocused = true
             }
-            .contextMenu { contextMenu(for: item) }
-    }
-
-    @ViewBuilder
-    private func contextMenu(for item: PhotoItem) -> some View {
-        let targets = app.selectedIDs.contains(item.id) ? app.targetIDs() : [item.id]
-        // Shortcuts are spelled into the titles rather than attached with
-        // .keyboardShortcut: these keys are already handled by onKeyPress, and a
-        // menu-registered equivalent could fire the same toggle twice, which
-        // would silently cancel itself out.
-        Button("Pick  (P)") { ratings.setPick(.picked, for: targets) }
-        Button("Reject  (X)") { ratings.setPick(.rejected, for: targets) }
-        Button("Clear Rating  (U)") { ratings.clear(targets) }
-        Divider()
-        // Folded away: six colours at the top level pushed everything below
-        // them out of reach, and the keys are how a colour is actually
-        // assigned — the menu is where you go to remember which key, not to
-        // avoid using it.
-        Menu("Colour") {
-            ForEach(ColorLabel.allCases) { color in
-                Button("\(color.label)  (\(color.shortcutKey))") { ratings.setColor(color, for: targets) }
+            .contextMenu {
+                PhotoActionsMenu(item: item,
+                                 targets: app.selectedIDs.contains(item.id)
+                                     ? app.targetIDs() : [item.id],
+                                 items: items,
+                                 stack: stackInfo(for: item),
+                                 shows: .inGrid,
+                                 onNewEvent: onNewEvent,
+                                 onError: { actionError = $0 })
             }
-            Divider()
-            Button("No Colour") { ratings.setColor(nil, for: targets) }
-        }
-        Divider()
-        // Always present, even with no events yet — creating the first one is
-        // the item people go looking for here.
-        Menu("Add to Event") {
-            Button("New Event from Selection…") { onNewEvent(targets) }
-            if !events.isEmpty {
-                Divider()
-                ForEach(sortedEvents) { event in
-                    Button(event.name) { add(targets, to: event) }
-                }
-            }
-        }
-        if let current = currentEvent {
-            Button("Remove from “\(current.name)”") { remove(targets, from: current) }
-        }
-        if let root = stackRoot(of: item.id), let count = stackSizes[root] {
-            Divider()
-            Button(app.expandedStacks.contains(root)
-                   ? "Stack These \(count) Versions  (S)"
-                   : "Show All \(count) Versions  (S)") {
-                toggleStack(containing: item.id)
-            }
-        }
-        Divider()
-        Button("Duplicate") { duplicate(item) }
-        Button("Split into Left and Right") { splitLeftRight(item) }
-        // Offered only for photos this app made. An original is someone's
-        // photograph; a variant is a copy of one, and its source is still here.
-        if ratings.isVariant(item.id) {
-            Button("Remove This Version…", role: .destructive) { remove(item) }
-                .help(removalMessage(for: item))
-        }
-        Divider()
-        Button("Copy Adjustments") {
-            Task { await clipboard.copy(from: item) }
-        }
-        if clipboard.hasContents {
-            Button(pasteTitle(targets, includingCrop: false)) {
-                Task { await clipboard.paste(to: photoItems(for: targets), includingCrop: false) }
-            }
-            Button(pasteTitle(targets, includingCrop: true)) {
-                Task { await clipboard.paste(to: photoItems(for: targets), includingCrop: true) }
-            }
-            .help("Also applies the copied crop, which is rarely right across different compositions")
-        }
-        Divider()
-        Menu("Select Related") {
-            ForEach(ClusterGranularity.allCases) { option in
-                Button(option.label) {
-                    app.focusID = item.id
-                    if !app.selectedIDs.contains(item.id) { app.selectedIDs = [item.id] }
-                    app.relatedGranularity = option
-                    app.selectRelated(in: items)
-                }
-            }
-        }
-        Divider()
-        Button("Open in Loupe") {
-            app.focusID = item.id
-            app.isLoupePresented = true
-        }
     }
 
     /// A quiet rule between one day and the next.

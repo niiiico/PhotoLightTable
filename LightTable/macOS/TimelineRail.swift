@@ -25,11 +25,17 @@ struct TimelineRail: View {
 
     let ticks: [TimelineIndex.Tick]
     @ObservedObject var position: ScrollPosition
-    /// The day a fraction of the way down, for the callout under the pointer.
-    let dayFor: (Double) -> Date?
-    /// Continuous while dragging: the grid follows the pointer.
-    let onScrub: (Double) -> Void
-    /// On release: the focus lands, so the keyboard carries on from there.
+    /// The first photograph of the day a fraction of the way down, for the
+    /// callout under the pointer.
+    let previewFor: (Double) -> (day: Date, item: PhotoItem)?
+    /// On release: the grid moves and the focus lands, so the keyboard carries
+    /// on from there.
+    ///
+    /// Only on release. Scrolling the grid live meant tearing a lazy grid of
+    /// ninety thousand photographs to a new position on every point of the
+    /// drag, which is as heavy as it sounds. The callout shows where you are
+    /// instead — the day, and the first frame of it — and the grid goes there
+    /// once.
     let onLand: (Double) -> Void
 
     @Environment(\.surfaces) private var surfaces
@@ -54,17 +60,16 @@ struct TimelineRail: View {
                 thumb
                     .offset(y: position.fraction * height - 1)
 
-                if let pointer {
-                    callout(at: pointer, height: height)
+                if let pointer, let preview = previewFor(pointer) {
+                    ScrubPreview(day: preview.day, item: preview.item)
+                        .offset(x: -128, y: pointer * height - 34)
                 }
             }
             .animation(.easeOut(duration: 0.12), value: isActive)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let fraction = clamp(value.location.y / height)
-                        pointer = fraction
-                        onScrub(fraction)
+                        pointer = clamp(value.location.y / height)
                     }
                     .onEnded { value in
                         let fraction = clamp(value.location.y / height)
@@ -102,24 +107,55 @@ struct TimelineRail: View {
             .padding(.leading, 10)
     }
 
-    /// The day under the pointer, shown to the left of the rail so the hand
-    /// holding the scrubber is not covering the answer.
-    private func callout(at fraction: Double, height: CGFloat) -> some View {
-        Text(dayFor(fraction)?.formatted(.dateTime.day().month(.abbreviated).year()) ?? "")
-            .font(.system(size: 11, weight: .medium))
-            .monospacedDigit()
-            .foregroundStyle(.white)
-            .fixedSize()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(surfaces.rail.opacity(0.95), in: Capsule())
-            .offset(x: -66, y: fraction * height - 12)
-    }
-
     private func clamp(_ value: Double) -> Double {
         min(max(value, 0), 1)
     }
 }
+/// The day under the pointer, and the first frame of it.
+///
+/// Shown to the left of the rail, so the hand holding the scrubber is not
+/// covering the answer. A date alone is not enough to aim with: the thumbnail
+/// is how you recognise the afternoon you were looking for.
+private struct ScrubPreview: View {
+    let day: Date
+    let item: PhotoItem
+
+    @Environment(\.surfaces) private var surfaces
+    @State private var image: PlatformImage?
+
+    private let side: CGFloat = 68
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 3).fill(surfaces.table)
+                if let image {
+                    Image(platformImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                }
+            }
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+
+            Text(day.formatted(.dateTime.day().month(.abbreviated).year()))
+                .font(.system(size: 11, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .fixedSize()
+        }
+        .padding(7)
+        .background(surfaces.rail.opacity(0.96), in: RoundedRectangle(cornerRadius: 7))
+        .shadow(radius: 8, y: 2)
+        // Reloaded as the pointer crosses into another day; the loader caches,
+        // so scrubbing back over ground already covered costs nothing.
+        .task(id: item.id) {
+            image = await ThumbnailLoader.shared.thumbnail(
+                for: item, size: CGSize(width: side, height: side), mode: .fill)
+        }
+    }
+}
+
 /// The scroll position, reported out of the scrolled content.
 struct ScrollFractionKey: PreferenceKey {
     static let defaultValue: Double = 0
