@@ -283,6 +283,18 @@ per redraw rather than O(n log n), which is the difference between a smooth and 
 stuttering thumbnail-size slider on a large library. If a future change ever
 reorders items upstream, this has to become a real sort.
 
+### What a highlight is
+
+The app's accent colour is a neutral grey, set once in the asset catalog, and
+everything that highlights reads from it: the focused and selected cells in the
+grid, the current frame in the strip, the selected album in the sidebar. The
+system's blue is a saturated bar a few inches from a photograph — a colour cast
+in the corner of the eye, which is the one thing the neutral greys exist to
+prevent.
+
+One colour in one place, rather than each view tinting itself: a highlight that
+means two different things in two different views is not a highlight.
+
 ## Finding a day
 
 Two ways, for the two ways you know when something was.

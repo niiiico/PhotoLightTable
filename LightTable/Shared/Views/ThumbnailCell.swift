@@ -283,7 +283,9 @@ struct ThumbnailCell: View, Equatable {
                 if showsSelectionBadge {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white, Color.accentColor)
+                        // Dark tick on the accent, now that the accent is a
+                        // pale grey: white on it was a disc with nothing in it.
+                        .foregroundStyle(Color.black.opacity(0.7), Color.accentColor)
                         .shadow(radius: 2)
                         .padding(6)
                 }

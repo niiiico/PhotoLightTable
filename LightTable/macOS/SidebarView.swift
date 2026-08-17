@@ -68,7 +68,6 @@ struct SidebarView: View {
         // is forced inside so the system's own label and selection colours
         // resolve against it, whatever the appearance preference says.
         .background(surfaces.rail)
-        .tint(surfaces.selection)
         .environment(\.colorScheme, .dark)
     }
 

@@ -23,8 +23,7 @@ struct SurfacesTests {
     @Test("Every surface keeps its place in the stack", arguments: [Surfaces.Levels.dark, .light])
     func orderHolds(_ levels: Surfaces.Levels) {
         // Darkest first: the loupe, then the chrome around the table, the mat
-        // under a letterboxed photograph, the table, the day headers, and the
-        // selection bar as the one thing meant to be picked out.
+        // under a letterboxed photograph, the table, and the day headers.
         #expect(levels.ordered == levels.ordered.sorted())
     }
 
