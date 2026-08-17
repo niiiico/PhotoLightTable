@@ -23,6 +23,8 @@ struct ThumbnailCell: View, Equatable {
     /// the pile, since the other photos are on the table beside it.
     var isStackExpanded: Bool = false
     var onToggleStack: (() -> Void)? = nil
+    /// Debug only: draws the photo's identifier over it.
+    var showsAssetID: Bool = false
 
     private var isStack: Bool { stackCount > 1 }
 
@@ -206,8 +208,26 @@ struct ThumbnailCell: View, Equatable {
         }
     }
 
+    /// The first field of the identifier, which is what every query and every
+    /// filename in the library is keyed by — the rest is a resource suffix that
+    /// is the same for everything.
+    private var shortAssetID: String {
+        String(item.id.prefix(8))
+    }
+
     private var badges: some View {
         VStack {
+            if showsAssetID {
+                Text(shortAssetID)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4))
+                    .textSelection(.enabled)
+                    .padding(.top, 4)
+            }
+
             HStack {
                 if rating.pick != .unrated {
                     Image(systemName: rating.pick.symbolName)
@@ -297,5 +317,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.variantLabel == rhs.variantLabel
             && lhs.stackCount == rhs.stackCount
             && lhs.isStackExpanded == rhs.isStackExpanded
+            && lhs.showsAssetID == rhs.showsAssetID
     }
 }

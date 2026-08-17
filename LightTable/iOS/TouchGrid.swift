@@ -78,7 +78,8 @@ struct TouchGrid: View {
                       variantLabel: ratings.variantLabel(for: item.id),
                       stackCount: stackSizes[item.id] ?? 0,
                       isStackExpanded: app.expandedStacks.contains(item.id),
-                      onToggleStack: { toggleStack(containing: item.id) })
+                      onToggleStack: { toggleStack(containing: item.id) },
+                      showsAssetID: app.showsAssetIDs)
         .equatable()
         .background(
             GeometryReader { geo in

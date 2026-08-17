@@ -78,6 +78,12 @@ final class AppModel: ObservableObject {
     /// well as the sources they hang off — dropping them would leave stacks
     /// with nothing to open, which is the thing being inspected.
     @Published var showsOnlyFamilies = false
+    /// Debug only: prints each photo's identifier over it.
+    ///
+    /// The identifier is what the store, the library on disk and every query
+    /// are keyed by, so having it on screen is the difference between reading
+    /// about a photo and finding it.
+    @Published var showsAssetIDs = false
     @Published var pickFilter: PickFilter = .all
     @Published var colorFilter: Set<ColorLabel> = []
     @Published var thumbnailSize: Double = 180

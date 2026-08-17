@@ -139,6 +139,8 @@ struct LightTableApp: App {
                 CommandMenu("Debug") {
                     Toggle("Only Photos With Versions", isOn: $app.showsOnlyFamilies)
                         .help("Narrows the grid to families, for checking what Find Lost Versions decided")
+                    Toggle("Show Asset IDs", isOn: $app.showsAssetIDs)
+                        .help("Prints each photo's identifier over it, for matching against the store")
                 }
             }
         }
