@@ -386,6 +386,18 @@ has to render identically against a display-size preview and a full-resolution
 commit. Core Image's origin is bottom-left, so the flip happens once, at the
 point of application.
 
+### A photo edited somewhere else
+
+Opening one says so. Photos edited in Photos.app, or years ago in something
+else, carry adjustments this app cannot read — so PhotoKit hands over the
+**result** rather than the original underneath it.
+
+Nothing is lost: the picture arrives as it was left. What is missing is the
+adjustments behind it, so the sliders start from neutral and work *on top of*
+that edit rather than replacing it. Reverting in Photos is the only way back to
+the original, which is worth saying in the panel rather than leaving someone to
+drag exposure and wonder why it compounds.
+
 ### Recipes decode leniently
 
 Every field of a recipe falls back on its own. A mask written before brushes

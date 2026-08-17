@@ -445,6 +445,8 @@ struct LoupeView: View {
                                       onSelect: { openVersion($0) })
                     }
 
+                    if edit.hasForeignEdit { foreignEditNote }
+
                     VStack(alignment: .leading, spacing: 10) {
                         sectionHeading(selectedMask == nil ? "Adjust" : "Adjust Mask",
                                        isReset: activeTone.isNeutral && activeTone.whitePoint == nil) {
@@ -1089,6 +1091,32 @@ struct LoupeView: View {
                 horizonNote = "No horizon found — straighten by hand."
             }
         }
+    }
+
+    /// Says what cannot be recovered, without overstating what was lost.
+    ///
+    /// A photo edited in Photos.app or years ago in something else arrives as
+    /// the *result* of that edit — the picture is all there. What is missing is
+    /// the adjustments behind it, so the sliders start from nothing and work on
+    /// top rather than replacing what was done. Reverting in Photos is the only
+    /// way back to the original, and that is worth saying here rather than
+    /// leaving someone to discover it by dragging exposure and wondering why it
+    /// compounds.
+    private var foreignEditNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Edited somewhere else")
+                    .font(.caption.weight(.semibold))
+                Text("Those adjustments can't be read, so this starts from the edited photo rather than the original. Revert in Photos to get back to it.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var whiteBalanceRow: some View {

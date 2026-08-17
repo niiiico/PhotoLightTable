@@ -251,4 +251,47 @@ struct RealLibraryPathTests {
             }
         }
     }
+
+    @MainActor
+    @Test("What the editor gets for a photo edited somewhere else")
+    func foreignEditBase() async throws {
+        // Photos edited years ago in another app show up now that families are
+        // detected. The question is what the editor is handed for one: the
+        // result of that edit, or the original underneath it. The wording of
+        // any warning depends on the answer, so it is measured.
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        options.fetchLimit = 600
+        let assets = PHAsset.fetchAssets(with: options)
+
+        var found = 0
+        for index in 0..<assets.count where found < 4 {
+            let asset = assets.object(at: index)
+            guard asset.adjustmentsState != .none else { continue }
+
+            guard let input = await PhotoEditSession.loadInput(for: asset),
+                  let url = input.fullSizeImageURL else { continue }
+            let ours = PhotoEditSession.decode(input.adjustmentData) != nil
+
+            let resource = PHAssetResource.assetResources(for: asset)
+                .first { $0.type == .photo }
+            let source = CGImageSourceCreateWithURL(url as CFURL, nil)
+            let properties = source.flatMap {
+                CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any]
+            }
+            let baseWidth = properties?[kCGImagePropertyPixelWidth] as? Int ?? -1
+            let baseHeight = properties?[kCGImagePropertyPixelHeight] as? Int ?? -1
+
+            // The finding this pins: for an edit this app cannot read, PhotoKit
+            // hands over the *result* rather than the original underneath it —
+            // the base matches the asset's current size, not the resource's. So
+            // opening such a photo keeps the old work rather than discarding
+            // it; what is lost is the parameters, not the picture.
+            #expect(!ours, "expected a foreign edit")
+            #expect(baseWidth == asset.pixelWidth && baseHeight == asset.pixelHeight,
+                    "base \(baseWidth)x\(baseHeight) is not the edited photo \(asset.pixelWidth)x\(asset.pixelHeight)")
+            _ = resource
+            found += 1
+        }
+    }
 }

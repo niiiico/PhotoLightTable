@@ -942,6 +942,13 @@ final class PhotoEditSession: ObservableObject {
     private var renderedBefore: PhotoEditRecipe?
     private var renderedBeforeCrop: Bool?
     /// Which asset `input` was obtained for, so a commit can refuse a mismatch.
+    /// The photo carries an edit made somewhere else.
+    ///
+    /// PhotoKit hands over the result rather than the original in that case, so
+    /// nothing is lost — but the adjustments behind it cannot be read, and
+    /// anything done here is layered on top of them rather than replacing them.
+    @Published private(set) var hasForeignEdit = false
+
     private var inputAssetID: String?
 
     /// Whether this session is still open on the photo it was started for.
@@ -993,6 +1000,9 @@ final class PhotoEditSession: ObservableObject {
         loadedRecipe = Self.decode(loaded.adjustmentData) ?? .neutral
         recipe = loadedRecipe
 
+        hasForeignEdit = item.asset.adjustmentsState != .none && loadedRecipe == .neutral
+            && Self.decode(loaded.adjustmentData) == nil
+
         if let display = loaded.displaySizeImage {
             previewBase = CIImage.from(display)
         }
@@ -1015,6 +1025,7 @@ final class PhotoEditSession: ObservableObject {
         recipe = .neutral
         loadedRecipe = .neutral
         hasExistingEdit = false
+        hasForeignEdit = false
         errorMessage = nil
     }
 
