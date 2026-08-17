@@ -17,14 +17,19 @@ import Testing
 /// They skip when the library is unavailable, so they are worth little on
 /// another machine — but the failures they exist for were invisible to every
 /// test that made up its own input.
-@Suite("The path a photo takes to become a mask", .serialized)
+/// Skipped wholesale without a photo library, which makes them close to
+/// worthless on another machine. That is the trade: the failures they exist for
+/// were invisible to every test that made up its own input.
+private var hasLibraryAccess: Bool {
+    let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    return status == .authorized || status == .limited
+}
+
+@Suite("The path a photo takes to become a mask", .serialized,
+       .enabled(if: hasLibraryAccess))
 struct RealLibraryPathTests {
     @Test("The display-size image keeps the photograph's shape")
     func displaySizeImageAspect() async throws {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized || status == .limited,
-                     "no photo library access in this run")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 4
@@ -54,10 +59,6 @@ struct RealLibraryPathTests {
     @MainActor
     @Test("The rendered preview keeps the photograph's shape")
     func renderedPreviewAspect() async throws {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized || status == .limited,
-                     "no photo library access in this run")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 1
@@ -92,10 +93,6 @@ struct RealLibraryPathTests {
     @MainActor
     @Test("A region captured through the real path keeps the photo's shape")
     func regionThroughTheRealPath() async throws {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized || status == .limited,
-                     "no photo library access in this run")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 400
@@ -138,9 +135,6 @@ struct RealLibraryPathTests {
         // It is requested with a *square* target size and resizeMode .exact,
         // which is a very different question to ask PhotoKit than the one the
         // preview asks.
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized || status == .limited, "no library access")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 400
@@ -172,9 +166,6 @@ struct RealLibraryPathTests {
         // for a photo already cropped in Photos.app, where the editor sees the
         // render and the resource is still the original — the mask is stretched
         // onto the wrong frame and lands beside its subject.
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized || status == .limited, "no library access")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 400
@@ -207,18 +198,35 @@ struct RealLibraryPathTests {
         }
     }
 
+    /// Opt-in: it writes to the real photo library and then removes what it
+    /// wrote, and on macOS `deleteAssets` puts up a confirmation the test host
+    /// cannot answer — so an ordinary run hangs on a dialog nobody is looking
+    /// at. Skipped is the right shape; failing every run would just be noise.
+    ///
+    ///     LIGHTTABLE_LIVE_TESTS=1 xcodebuild test -scheme LightTable \
+    ///         -destination platform=macOS \
+    ///         -only-testing:LightTableTests/RealLibraryPathTests
     @MainActor
-    @Test("Making a variant of a real photo actually succeeds")
+    @Test("Making a variant of a real photo actually succeeds",
+          .enabled(if: ProcessInfo.processInfo.environment["LIGHTTABLE_LIVE_TESTS"] == "1"))
     func variantCreationSucceeds() async throws {
+        // Opt-in, because it writes to the real photo library and then removes
+        // what it wrote — and on macOS `deleteAssets` puts up a confirmation
+        // the test host cannot answer, so an ordinary run hangs on a dialog
+        // nobody is looking at. Run it deliberately:
+        //
+        //     LIGHTTABLE_LIVE_TESTS=1 xcodebuild test -scheme LightTable \
+        //         -destination platform=macOS \
+        //         -only-testing:LightTableTests/RealLibraryPathTests
+        //
+        // and click through the prompt.
+
         // PHPhotosErrorInvalidResource, 3302: the resource set has to describe
         // a photograph that could exist. Pairing a rendered base with the
         // original's RAW sibling or Live Photo video does not, and no amount of
         // geometry checking catches a request PhotoKit simply refuses.
         //
         // This makes a real photo in the library and removes it again.
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        try #require(status == .authorized, "needs full library access to write")
-
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.fetchLimit = 1

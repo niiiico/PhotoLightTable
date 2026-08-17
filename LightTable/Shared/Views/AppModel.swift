@@ -72,6 +72,12 @@ final class AppModel: ObservableObject {
             sortChoice = newValue.map { SortChoice(scope: selection, order: $0) }
         }
     }
+    /// Debug only: narrows the grid to photos that belong to a family.
+    ///
+    /// For checking what "Find Lost Versions" decided. It keeps the variants as
+    /// well as the sources they hang off — dropping them would leave stacks
+    /// with nothing to open, which is the thing being inspected.
+    @Published var showsOnlyFamilies = false
     @Published var pickFilter: PickFilter = .all
     @Published var colorFilter: Set<ColorLabel> = []
     @Published var thumbnailSize: Double = 180
@@ -113,7 +119,9 @@ final class AppModel: ObservableObject {
     /// Number of columns the grid last laid out, so up/down arrows can move a row.
     var columnCount: Int = 1
 
-    var hasActiveFilter: Bool { pickFilter != .all || !colorFilter.isEmpty }
+    var hasActiveFilter: Bool {
+        pickFilter != .all || !colorFilter.isEmpty || showsOnlyFamilies
+    }
 
     /// An event reads as a story, so it runs forwards; the whole library reads as
     /// a feed, so the most recent work is at the top.
@@ -149,6 +157,7 @@ final class AppModel: ObservableObject {
     func filter(_ items: [PhotoItem], ratings: RatingStore) -> [PhotoItem] {
         guard hasActiveFilter else { return items }
         return items.filter { item in
+            if showsOnlyFamilies, ratings.family(of: item.id).count < 2 { return false }
             let rating = ratings.rating(for: item.id)
             switch pickFilter {
             case .all: break

@@ -13,6 +13,7 @@ final class LibraryProjection: ObservableObject {
     private struct Key: Equatable {
         var selection: LibrarySelection
         var pickFilter: PickFilter
+        var showsOnlyFamilies: Bool
         var colorFilter: Set<ColorLabel>
         var sortOrder: PhotoSortOrder
         var libraryVersion: Int
@@ -46,6 +47,7 @@ final class LibraryProjection: ObservableObject {
                  ratings: RatingStore) {
         let newKey = Key(selection: app.selection,
                          pickFilter: app.pickFilter,
+                         showsOnlyFamilies: app.showsOnlyFamilies,
                          colorFilter: app.colorFilter,
                          sortOrder: app.sortOrder,
                          libraryVersion: libraryVersion,

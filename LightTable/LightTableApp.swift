@@ -132,6 +132,15 @@ struct LightTableApp: App {
                     NotificationCenter.default.post(name: .rebuildVariants, object: nil)
                 }
             }
+
+            // Absent entirely unless asked for, rather than present and
+            // disabled: a menu nobody can use is still a menu everybody reads.
+            if Debug.isEnabled {
+                CommandMenu("Debug") {
+                    Toggle("Only Photos With Versions", isOn: $app.showsOnlyFamilies)
+                        .help("Narrows the grid to families, for checking what Find Lost Versions decided")
+                }
+            }
         }
         #endif
 

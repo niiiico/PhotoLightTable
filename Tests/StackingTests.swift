@@ -193,3 +193,44 @@ struct StackingTests {
         #expect(closed.items.map(\.id) == ["a", "b", "c"])
     }
 }
+
+@Suite("The debug families filter")
+struct FamiliesFilterTests {
+    /// The filter is a one-liner in `AppModel.filter`, but the rule it encodes
+    /// is the thing being audited: it has to keep a family whole, not just its
+    /// sources, or the stacks it shows cannot be opened to see inside.
+    private func keeps(_ ids: [String], families: [String: [String]]) -> [String] {
+        // Mirrors `family(of:)`: a photo is in a family when its root has
+        // variants, whether it is the root or one of them.
+        var rootOf: [String: String] = [:]
+        for (root, variants) in families {
+            for variant in variants { rootOf[variant] = root }
+        }
+        return ids.filter { id in
+            let root = rootOf[id] ?? id
+            return !(families[root] ?? []).isEmpty
+        }
+    }
+
+    @Test("A source and its versions are both kept")
+    func keepsWholeFamilies() {
+        let kept = keeps(["a", "a-bw", "lonely"], families: ["a": ["a-bw"]])
+
+        #expect(kept == ["a", "a-bw"])
+    }
+
+    @Test("A photo with no versions is dropped")
+    func dropsSingletons() {
+        #expect(keeps(["lonely"], families: [:]).isEmpty)
+    }
+
+    @Test("Keeping only sources would leave stacks that cannot be opened")
+    func keepsVariantsNotJustRoots() {
+        // The reason this is not simply "photos that are a root": an opened
+        // stack needs its members present, and inspecting them is the entire
+        // point of the filter.
+        let kept = keeps(["a", "a-bw", "a-crop"], families: ["a": ["a-bw", "a-crop"]])
+
+        #expect(kept.count == 3)
+    }
+}
