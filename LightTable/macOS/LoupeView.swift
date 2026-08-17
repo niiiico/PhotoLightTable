@@ -64,6 +64,7 @@ struct LoupeView: View {
                     Divider()
                     FilmStrip(items: items,
                               currentID: current?.id,
+                              ratingFor: { ratings.rating(for: $0) },
                               onSelect: { app.focusID = $0 },
                               onDismiss: { showsFilmStrip = false })
                 }
@@ -240,12 +241,6 @@ struct LoupeView: View {
             .onTapGesture(count: 2) { if !handlesAreActive { zoomState.toggle() } }
         }
         .padding(14)
-        // Drawn outside that padding, so the frame never touches the image.
-        .overlay {
-            if let tint = verdictTint {
-                Rectangle().strokeBorder(tint, lineWidth: 4)
-            }
-        }
     }
 
     private var panGesture: some Gesture {
@@ -265,17 +260,20 @@ struct LoupeView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             if currentPick != .unrated {
-                HStack(spacing: 7) {
+                // Stated rather than announced. A verdict is worth knowing at a
+                // glance and is not the subject of the screen — heavy caps in a
+                // filled capsule, with a coloured frame around the photograph
+                // as well, said it three times over.
+                HStack(spacing: 6) {
                     Image(systemName: currentPick.symbolName)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(currentPick.label.uppercased())
-                        .font(.system(size: 13, weight: .heavy))
-                        .kerning(0.8)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(currentPick.label)
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(currentPick.tint, in: Capsule())
+                .foregroundStyle(currentPick.tint)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(currentPick.tint.opacity(0.16), in: Capsule())
             }
 
             if let id = current?.id, let color = ratings.rating(for: id).color {
@@ -1422,10 +1420,6 @@ struct LoupeView: View {
     private var currentPick: Pick {
         guard let current else { return .unrated }
         return ratings.rating(for: current.id).pick
-    }
-
-    private var verdictTint: Color? {
-        currentPick == .unrated ? nil : currentPick.tint
     }
 
     private func loadImage() async {

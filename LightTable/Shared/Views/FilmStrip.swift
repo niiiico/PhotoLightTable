@@ -12,6 +12,9 @@ import SwiftUI
 struct FilmStrip: View {
     let items: [PhotoItem]
     let currentID: String?
+    /// Verdict per photo, so the strip can show what has been decided without
+    /// reaching into the store from a view this small.
+    let ratingFor: (String) -> RatingValue
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
 
@@ -25,7 +28,8 @@ struct FilmStrip: View {
                         ForEach(items) { item in
                             FilmStripCell(item: item,
                                           height: height,
-                                          isCurrent: item.id == currentID)
+                                          isCurrent: item.id == currentID,
+                                          rating: ratingFor(item.id))
                                 .id(item.id)
                                 .onTapGesture { onSelect(item.id) }
                         }
@@ -72,6 +76,7 @@ private struct FilmStripCell: View, Equatable {
     let item: PhotoItem
     let height: CGFloat
     let isCurrent: Bool
+    let rating: RatingValue
 
     @State private var image: PlatformImage?
 
@@ -88,6 +93,27 @@ private struct FilmStripCell: View, Equatable {
         }
         .frame(width: height, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 3))
+        // The mark only, no word: at this size a label would be a smudge, and
+        // the shape of the symbol is what is being read anyway.
+        .overlay(alignment: .topLeading) {
+            if rating.pick != .unrated {
+                Image(systemName: rating.pick.symbolName)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(2.5)
+                    .background(rating.pick.tint, in: Circle())
+                    .padding(3)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let color = rating.color {
+                color.color
+                    .frame(height: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 1.5))
+                    .padding(.horizontal, 5)
+                    .padding(.bottom, 3)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 3)
                 .strokeBorder(isCurrent ? Color.accentColor : .clear, lineWidth: 2)
@@ -103,6 +129,7 @@ private struct FilmStripCell: View, Equatable {
     }
 
     static func == (lhs: FilmStripCell, rhs: FilmStripCell) -> Bool {
-        lhs.item.id == rhs.item.id && lhs.isCurrent == rhs.isCurrent && lhs.height == rhs.height
+        lhs.item.id == rhs.item.id && lhs.isCurrent == rhs.isCurrent
+            && lhs.height == rhs.height && lhs.rating == rhs.rating
     }
 }

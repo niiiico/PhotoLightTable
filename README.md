@@ -255,6 +255,10 @@ is legible without drawing a border around it.
 
 ## The strip in the loupe
 
+Each frame carries its verdict as a mark only — no word, since a label at that
+size is a smudge and the shape of the symbol is what gets read anyway — with the
+colour label as a hairline under it.
+
 A row of neighbouring frames along the bottom, centred on the one you are
 looking at. The loupe shows a single photograph, which is the point, but
 arrowing through a take gives no sense of where you are in it, whether the next
