@@ -152,30 +152,76 @@ enum LightroomMatch {
                                 in index: LibraryIndex,
                                 offset: TimeInterval) -> Pass {
         var result = Pass()
+
+        // Worked a second at a time rather than a frame at a time, because what
+        // a second holds is the whole question: one photograph, the same
+        // photograph twice as a raw and a JPEG, or a burst.
+        var bySecond: [Int: [CatalogPhoto]] = [:]
         for photo in photos {
             guard let captureTime = photo.captureTime else { continue }
             let second = LibraryIndex.second(of: captureTime.timeIntervalSince1970 + offset)
+            bySecond[second, default: []].append(photo)
+        }
 
-            let onTheSecond = index.photos(at: second)
-            if let chosen = choose(from: onTheSecond, like: photo) {
-                result.matches[photo.localID] = chosen.id
+        for (second, frames) in bySecond {
+            let candidates = index.photos(at: second)
+            guard !candidates.isEmpty else {
+                // Nothing on that second at all: allow a second either way, for
+                // the frames where the two ends disagree about where a fraction
+                // went. Reached only when the second itself is empty, so a
+                // burst is never resolved out of its neighbours.
+                for frame in frames {
+                    for neighbour in [second - 1, second + 1] {
+                        guard let chosen = choose(from: index.photos(at: neighbour), like: frame) else { continue }
+                        result.matches[frame.localID] = chosen.id
+                        break
+                    }
+                }
                 continue
             }
-            if !onTheSecond.isEmpty {
-                result.ambiguous += 1
+
+            // A raw and a JPEG written together are one photograph with two
+            // rows in the catalogue, and one asset in the library. Grouped by
+            // the name they share, so a pair does not read as two frames the
+            // library is short of.
+            let groups = Dictionary(grouping: frames) { baseName(of: $0.fileName) }
+            let names = groups.keys.sorted()
+
+            if names.count == candidates.count, names.count > 1 {
+                // A burst: several frames on one second, and just as many in
+                // the library. Lightroom's truncated second cannot tell them
+                // apart, but both ends know what order they were taken in — the
+                // file numbers on one side, the fraction of a second on the
+                // other.
+                let ordered = candidates.sorted {
+                    ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast)
+                }
+                for (name, photo) in zip(names, ordered) {
+                    for frame in groups[name] ?? [] {
+                        result.matches[frame.localID] = photo.id
+                    }
+                }
                 continue
             }
-            // Nothing on that second at all: allow a second either way, for the
-            // frames where the two ends disagree about where the fraction
-            // rounded. Reached only when the second itself is empty, so a burst
-            // is never resolved out of its neighbours.
-            for neighbour in [second - 1, second + 1] {
-                guard let chosen = choose(from: index.photos(at: neighbour), like: photo) else { continue }
-                result.matches[photo.localID] = chosen.id
-                break
+
+            for name in names {
+                let frames = groups[name] ?? []
+                guard let first = frames.first,
+                      let chosen = choose(from: candidates, like: first) else {
+                    result.ambiguous += frames.count
+                    continue
+                }
+                for frame in frames {
+                    result.matches[frame.localID] = chosen.id
+                }
             }
         }
         return result
+    }
+
+    /// The name without its extension: what a raw and its JPEG share.
+    private static func baseName(of fileName: String) -> String {
+        (fileName as NSString).deletingPathExtension
     }
 
     /// One photograph, or none.

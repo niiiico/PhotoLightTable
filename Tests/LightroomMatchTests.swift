@@ -114,6 +114,62 @@ struct LightroomMatchTests {
         #expect(outcome.matched == [1: "upright"])
     }
 
+    @Test("A raw and its JPEG are one photograph, not two the library is short of")
+    func rawAndJpegAreOneFrame() {
+        let index = LightroomMatch.LibraryIndex([FakePhoto(id: "asset", creationDate: moment(0))])
+        let raw = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_4079.CR2",
+                                              captureTime: moment(0),
+                                              pixelWidth: 3888, pixelHeight: 2592)
+        let jpeg = LightroomMatch.CatalogPhoto(localID: 2, fileName: "IMG_4079.JPG",
+                                               captureTime: moment(0),
+                                               pixelWidth: 3888, pixelHeight: 2592)
+
+        let outcome = LightroomMatch.match([raw, jpeg], in: index)
+
+        #expect(outcome.matched == [1: "asset", 2: "asset"])
+        #expect(outcome.ambiguous == 0)
+    }
+
+    @Test("A burst is paired in the order it was taken")
+    func burstPairsInOrder() {
+        // Three frames on one second. Lightroom's truncated second cannot tell
+        // them apart; the file numbers and the fractions of a second can.
+        let index = LightroomMatch.LibraryIndex([
+            FakePhoto(id: "third", creationDate: moment(0).addingTimeInterval(0.8)),
+            FakePhoto(id: "first", creationDate: moment(0).addingTimeInterval(0.1)),
+            FakePhoto(id: "second", creationDate: moment(0).addingTimeInterval(0.4)),
+        ])
+        let frames = (1...3).map {
+            LightroomMatch.CatalogPhoto(localID: Int64($0), fileName: "IMG_400\($0).CR2",
+                                        captureTime: moment(0),
+                                        pixelWidth: 3888, pixelHeight: 2592)
+        }
+
+        let outcome = LightroomMatch.match(frames, in: index)
+
+        #expect(outcome.matched == [1: "first", 2: "second", 3: "third"])
+    }
+
+    @Test("A burst the library holds a different number of is left alone")
+    func unevenBurstStaysAmbiguous() {
+        // Three frames, two in the library: which two is a guess, and a guess
+        // here puts the wrong photograph in an event.
+        let index = LightroomMatch.LibraryIndex([
+            FakePhoto(id: "one", creationDate: moment(0).addingTimeInterval(0.1)),
+            FakePhoto(id: "two", creationDate: moment(0).addingTimeInterval(0.4)),
+        ])
+        let frames = (1...3).map {
+            LightroomMatch.CatalogPhoto(localID: Int64($0), fileName: "IMG_400\($0).CR2",
+                                        captureTime: moment(0),
+                                        pixelWidth: 3888, pixelHeight: 2592)
+        }
+
+        let outcome = LightroomMatch.match(frames, in: index)
+
+        #expect(outcome.matched.isEmpty)
+        #expect(outcome.ambiguous == 3)
+    }
+
     @Test("Two frames of the same shape on the same second are left alone")
     func ambiguityIsNotGuessedAt() {
         // An event built from the wrong photographs is worse than one that says

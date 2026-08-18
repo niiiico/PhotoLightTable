@@ -15,6 +15,20 @@ import Foundation
 enum Debug {
     static let isEnabled = ProcessInfo.processInfo.environment["LIGHTTABLE_DEBUG"] == "1"
 
+    /// A Lightroom catalogue to survey at launch, for working on the matching
+    /// without a hand on the menu.
+    ///
+    /// It only ever reports: the events themselves are made by someone deciding
+    /// to make them, from the proposal, in front of the numbers.
+    ///
+    ///     LIGHTTABLE_DEBUG=1 LIGHTTABLE_LIGHTROOM_CATALOG=/path/to.lrcat LightTable
+    static var lightroomCatalog: URL? {
+        guard isEnabled,
+              let path = ProcessInfo.processInfo.environment["LIGHTTABLE_LIGHTROOM_CATALOG"],
+              !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
     /// Times a piece of work and prints it when it took long enough to be felt.
     ///
     /// A sixtieth of a second is the budget for anything on the way to the

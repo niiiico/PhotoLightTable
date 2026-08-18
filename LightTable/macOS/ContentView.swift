@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var pendingVariantRebuild: VariantRebuilder.Proposal?
     @State private var pendingLightroom: LightroomImport.Proposal?
     @State private var lightroomError: String?
+    @State private var hasSurveyedCatalog = false
     @State private var isGoingToDate = false
     @State private var targetDate = Date()
     @StateObject private var projection = LibraryProjection()
@@ -187,6 +188,17 @@ struct ContentView: View {
         // notably after making an event, which moves you to the new event and
         // used to drop you at the newest photograph on the way back.
         .onChange(of: app.selection) { _, _ in app.restoreFocusForScope() }
+        // Debug only, and a report rather than an import: the library arrives
+        // some seconds after launch, and the survey is worth nothing before it.
+        .onChange(of: library.items.count) { _, count in
+            guard !hasSurveyedCatalog, count > 0, let catalog = Debug.lightroomCatalog else { return }
+            hasSurveyedCatalog = true
+            do {
+                _ = try LightroomImport.proposal(for: catalog, library: library.items)
+            } catch {
+                fputs("[lightroom] \(error.localizedDescription)\n", stderr)
+            }
+        }
         .onChange(of: ratings.revision) { _, _ in scheduleEventAlbumSync() }
         .onChange(of: library.items.count) { _, _ in scheduleEventAlbumSync() }
         .onChange(of: events.count) { _, _ in scheduleEventAlbumSync() }

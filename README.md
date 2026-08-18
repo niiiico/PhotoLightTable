@@ -504,6 +504,16 @@ either way round, since rotation is metadata in a raw and pixels in an export.
 Anything still ambiguous is left unmatched: an event built from the wrong frames
 is worse than one that says it is missing some.
 
+A second is worked whole rather than a frame at a time, because what a second
+holds is the question. One photograph, and it matches. The same photograph twice
+— a raw and its JPEG, which the catalogue holds as two rows and the library as
+one asset — grouped by the name they share, so a pair does not read as a frame
+the library is short of. Or a burst, where several frames sit on one truncated
+second: if the library holds just as many, both ends know the order they were
+taken in (file numbers on one side, fractions of a second on the other) and they
+pair up. If it holds a different number, they are left alone — which two is a
+guess, and a guess here puts the wrong photograph in an event.
+
 The catch is that Lightroom stores the camera's own clock with no timezone on
 it, and a photo library stores the moment absolutely. A fortnight abroad with the
 clock left on home time therefore lands nine hours out — for every frame in the
