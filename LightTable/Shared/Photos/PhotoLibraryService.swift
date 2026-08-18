@@ -113,6 +113,7 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.includeHiddenAssets = Debug.includesHidden
         options.includeHiddenAssets = false
 
         let result = PHAsset.fetchAssets(with: options)

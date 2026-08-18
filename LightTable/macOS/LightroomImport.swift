@@ -63,12 +63,14 @@ enum LightroomImport {
     static func proposal(for catalog: URL, library: [PhotoItem]) throws -> Proposal {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
+        let probe = Debug.isEnabled ? NearestPhoto(library) : nil
 
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
             guard outcome.count > 0 else {
                 proposal.empty.append(collection.fullName)
+                if Debug.isEnabled { log(collection, outcome, probe) }
                 continue
             }
             // The collection's own order, kept: it is often the order the
@@ -79,7 +81,7 @@ enum LightroomImport {
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
-            if Debug.isEnabled { log(collection, outcome) }
+            if Debug.isEnabled { log(collection, outcome, probe) }
         }
         if Debug.isEnabled {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
@@ -92,7 +94,8 @@ enum LightroomImport {
     /// alike to choose between, and what the file types of the missing were —
     /// all raws usually means a shoot that was never imported.
     private static func log(_ collection: LightroomCatalog.Collection,
-                            _ outcome: LightroomMatch.Outcome) {
+                            _ outcome: LightroomMatch.Outcome,
+                            _ probe: NearestPhoto?) {
         var line = "[lightroom] \(collection.fullName) — "
         line += "\(outcome.count) of \(collection.photos.count) found"
 
@@ -113,7 +116,111 @@ enum LightroomImport {
                 .joined(separator: ", ")
             line += " [missing: \(listed)]"
         }
+        // How far the missing frames are from the nearest photograph the
+        // library does hold. A wall of "not here" from an archive that was
+        // re-imported folder by folder is a claim worth testing: if the nearest
+        // photograph is always some round number of hours away, the clock is
+        // the problem, not the library.
+        if let probe, !outcome.unmatched.isEmpty {
+            line += " " + probe.describe(outcome.unmatched)
+
+            // The days the missing frames were shot on, and what the library
+            // holds across them.
+            let times = outcome.unmatched.compactMap { $0.captureTime?.timeIntervalSince1970 }
+            if let first = times.min(), let last = times.max() {
+                let day: TimeInterval = 86_400
+                let held = probe.count(from: Int((first / day).rounded(.down) * day),
+                                       to: Int((last / day).rounded(.down) * day + day))
+                let span = Int((last - first) / day) + 1
+                line += " {library holds \(held) across those \(span) day\(span == 1 ? "" : "s")}"
+            }
+        }
         fputs(line + "\n", stderr)
+    }
+
+    /// The library's capture times, sorted, so the nearest one to a given
+    /// moment can be found without walking ninety thousand photographs per
+    /// frame.
+    private struct NearestPhoto {
+        private let seconds: [Int]
+
+        init(_ library: [PhotoItem]) {
+            seconds = library.compactMap { $0.creationDate }
+                .map { Int($0.timeIntervalSince1970.rounded(.down)) }
+                .sorted()
+        }
+
+        /// How many photographs the library holds between two moments.
+        ///
+        /// The question a wall of "not here" actually poses: is the shoot
+        /// missing, or is it there under different times? A day that holds
+        /// nothing says the first; a day holding two hundred says the second,
+        /// and points at the clock rather than at the library.
+        func count(from start: Int, to end: Int) -> Int {
+            lowerBound(end + 1) - lowerBound(start)
+        }
+
+        private func lowerBound(_ value: Int) -> Int {
+            var low = 0, high = seconds.count
+            while low < high {
+                let middle = (low + high) / 2
+                if seconds[middle] < value { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
+
+        /// The signed distance to the closest photograph, in seconds.
+        func delta(to second: Int) -> Int? {
+            guard !seconds.isEmpty else { return nil }
+            var low = 0, high = seconds.count - 1
+            while low < high {
+                let middle = (low + high) / 2
+                if seconds[middle] < second { low = middle + 1 } else { high = middle }
+            }
+            let after = seconds[low] - second
+            let before = low > 0 ? seconds[low - 1] - second : after
+            return abs(before) < abs(after) ? before : after
+        }
+
+        /// The distances the missing frames sit at, commonest first — and the
+        /// single commonest distance to the second.
+        ///
+        /// The exact number is the one that decides: frames scattered a few
+        /// minutes from their neighbours are frames the library does not hold,
+        /// while a hundred frames all exactly thirty-two seconds out is a clock.
+        func describe(_ unmatched: [LightroomMatch.CatalogPhoto]) -> String {
+            var buckets: [String: Int] = [:]
+            var exact: [Int: Int] = [:]
+            var undated = 0
+
+            for photo in unmatched.prefix(400) {
+                guard let time = photo.captureTime else { undated += 1; continue }
+                guard let delta = delta(to: Int(time.timeIntervalSince1970.rounded(.down))) else { continue }
+                buckets[label(for: delta), default: 0] += 1
+                exact[delta, default: 0] += 1
+            }
+            if undated > 0 { buckets["undated", default: 0] += undated }
+
+            let listed = buckets.sorted { $0.value > $1.value }.prefix(3)
+                .map { "\($0.value) \($0.key)" }
+                .joined(separator: ", ")
+            var text = "{nearest: \(listed)"
+            if let (delta, count) = exact.max(by: { $0.value < $1.value }), count > 1 {
+                text += "; commonest \(delta)s ×\(count)"
+            }
+            return text + "}"
+        }
+
+        private func label(for delta: Int) -> String {
+            let magnitude = abs(delta)
+            switch magnitude {
+            case 0...2: return "same second"
+            case 3...300: return "minutes"
+            case 301...7200: return String(format: "%+.1f h", Double(delta) / 3600)
+            case 7201...172_800: return String(format: "%+.0f h", (Double(delta) / 3600).rounded())
+            default: return String(format: "%+.0f days", (Double(delta) / 86_400).rounded())
+            }
+        }
     }
 
     /// Makes an event per plan.

@@ -15,6 +15,16 @@ import Foundation
 enum Debug {
     static let isEnabled = ProcessInfo.processInfo.environment["LIGHTTABLE_DEBUG"] == "1"
 
+    /// Whether to fetch the photographs Photos keeps hidden.
+    ///
+    /// Off, because hiding a photograph is a decision and a light table that
+    /// ignores it is not one. Available for answering a question: a Lightroom
+    /// collection that matches nothing at all, when the shoot is certainly in
+    /// the library, is what a hidden album looks like from outside.
+    static var includesHidden: Bool {
+        isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_INCLUDE_HIDDEN"] == "1"
+    }
+
     /// A Lightroom catalogue to survey at launch, for working on the matching
     /// without a hand on the menu.
     ///
