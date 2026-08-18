@@ -1,4 +1,5 @@
 #if os(macOS)
+import Photos
 import SwiftData
 import SwiftUI
 
@@ -64,13 +65,14 @@ enum LightroomImport {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
         let probe = Debug.isEnabled ? NearestPhoto(library) : nil
+        let names = Debug.isEnabled ? NameProbe(library) : nil
 
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
             guard outcome.count > 0 else {
                 proposal.empty.append(collection.fullName)
-                if Debug.isEnabled { log(collection, outcome, probe) }
+                if Debug.isEnabled { log(collection, outcome, probe, names) }
                 continue
             }
             // The collection's own order, kept: it is often the order the
@@ -81,7 +83,7 @@ enum LightroomImport {
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
-            if Debug.isEnabled { log(collection, outcome, probe) }
+            if Debug.isEnabled { log(collection, outcome, probe, names) }
         }
         if Debug.isEnabled {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
@@ -95,7 +97,8 @@ enum LightroomImport {
     /// all raws usually means a shoot that was never imported.
     private static func log(_ collection: LightroomCatalog.Collection,
                             _ outcome: LightroomMatch.Outcome,
-                            _ probe: NearestPhoto?) {
+                            _ probe: NearestPhoto?,
+                            _ names: NameProbe?) {
         var line = "[lightroom] \(collection.fullName) — "
         line += "\(outcome.count) of \(collection.photos.count) found"
 
@@ -135,7 +138,52 @@ enum LightroomImport {
                 line += " {library holds \(held) across those \(span) day\(span == 1 ? "" : "s")}"
             }
         }
+        // The decisive question, asked only where it is worth the cost: a day
+        // the library holds hundreds of photographs from, none of which this
+        // matched. Either the catalogue's frames are there under other times —
+        // in which case their file names are there too — or the library holds
+        // different photographs of the same afternoon.
+        if let names, outcome.count == 0, outcome.unmatched.count >= 20 {
+            line += " " + names.describe(outcome.unmatched)
+        }
         fputs(line + "\n", stderr)
+    }
+
+    /// Reads the original file names of the photographs the library holds on a
+    /// given day.
+    ///
+    /// A resource lookup per asset, which is far too slow to do across a
+    /// library — so it is done for one day at a time, and only to answer a
+    /// question a whole collection is riding on.
+    private struct NameProbe {
+        private let byDay: [Int: [PhotoItem]]
+
+        init(_ library: [PhotoItem]) {
+            byDay = Dictionary(grouping: library.filter { $0.creationDate != nil }) {
+                Int(($0.creationDate!.timeIntervalSince1970 / 86_400).rounded(.down))
+            }
+        }
+
+        func describe(_ unmatched: [LightroomMatch.CatalogPhoto]) -> String {
+            let days = Set(unmatched.compactMap { photo -> Int? in
+                guard let time = photo.captureTime else { return nil }
+                return Int((time.timeIntervalSince1970 / 86_400).rounded(.down))
+            })
+            let assets = days.flatMap { byDay[$0] ?? [] }
+            guard !assets.isEmpty, assets.count <= 800 else { return "" }
+
+            var libraryNames: Set<String> = []
+            for item in assets {
+                guard let resource = PHAssetResource.assetResources(for: item.asset).first else { continue }
+                libraryNames.insert(
+                    (resource.originalFilename as NSString).deletingPathExtension.uppercased())
+            }
+            let wanted = Set(unmatched.map {
+                ($0.fileName as NSString).deletingPathExtension.uppercased()
+            })
+            let shared = wanted.intersection(libraryNames).count
+            return "{names: \(shared) of \(wanted.count) also in the library that day}"
+        }
     }
 
     /// The library's capture times, sorted, so the nearest one to a given
