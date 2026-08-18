@@ -67,6 +67,39 @@ enum LightroomImport {
         let probe = Debug.isEnabled ? NearestPhoto(library) : nil
         let names = Debug.isEnabled ? NameProbe(library) : nil
 
+        if Debug.isEnabled {
+            // Photos keeps hidden photographs in a smart album of their own.
+            // Asking it directly says whether they can be seen at all, which is
+            // a different question to whether the ordinary fetch returns them.
+            let hidden = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum, subtype: .smartAlbumAllHidden, options: nil)
+            if let album = hidden.firstObject {
+                let options = PHFetchOptions()
+                options.includeHiddenAssets = true
+                let assets = PHAsset.fetchAssets(in: album, options: options)
+                var oldest: Date?
+                var newest: Date?
+                assets.enumerateObjects { asset, _, _ in
+                    guard let date = asset.creationDate else { return }
+                    if oldest == nil || date < oldest! { oldest = date }
+                    if newest == nil || date > newest! { newest = date }
+                }
+                fputs("[lightroom] hidden album: \(assets.count) photographs" +
+                      (oldest.map { ", \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
+                      (newest.map { " to \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
+                      "\n", stderr)
+            } else {
+                fputs("[lightroom] hidden album: not available\n", stderr)
+            }
+
+            let dated = library.compactMap(\.creationDate)
+            fputs("[lightroom] library: \(library.count) photographs" +
+                  (Debug.includesHidden ? " (hidden included)" : "") +
+                  (dated.min().map { ", \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
+                  (dated.max().map { " to \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
+                  "\n", stderr)
+        }
+
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
