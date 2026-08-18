@@ -71,18 +71,31 @@ enum LightroomMatch {
     ///
     /// Built once and handed to every collection: a catalogue has hundreds of
     /// them, and the library has ninety thousand photographs.
+    ///
+    /// Floored, not rounded, and that is the whole game. Lightroom writes the
+    /// capture time with the fraction attached — `12:15:07.26` — and truncates
+    /// when asked for a second; a photo library keeps the fraction. Rounding
+    /// this side filed every photograph whose fraction was past the halfway
+    /// mark one second late, so a shoot from a camera that records sub-seconds
+    /// matched at almost exactly fifty per cent while a 2007 shoot from a body
+    /// that does not matched at a hundred. Two shoots in the same catalogue,
+    /// 94 of 192 and 58 of 58, which is what pointed at it.
     struct LibraryIndex {
         fileprivate var bySecond: [Int: [any MatchablePhoto]] = [:]
 
         init(_ photos: [any MatchablePhoto]) {
             for photo in photos {
                 guard let date = photo.creationDate else { continue }
-                bySecond[Int(date.timeIntervalSince1970.rounded()), default: []].append(photo)
+                bySecond[Self.second(of: date.timeIntervalSince1970), default: []].append(photo)
             }
         }
 
-        fileprivate func photos(at date: Date, offset: TimeInterval) -> [any MatchablePhoto] {
-            bySecond[Int((date.timeIntervalSince1970 + offset).rounded())] ?? []
+        fileprivate static func second(of time: TimeInterval) -> Int {
+            Int(time.rounded(.down))
+        }
+
+        fileprivate func photos(at second: Int) -> [any MatchablePhoto] {
+            bySecond[second] ?? []
         }
     }
 
@@ -125,9 +138,22 @@ enum LightroomMatch {
         var result: [Int64: String] = [:]
         for photo in photos {
             guard let captureTime = photo.captureTime else { continue }
-            let candidates = index.photos(at: captureTime, offset: offset)
-            guard let chosen = choose(from: candidates, like: photo) else { continue }
-            result[photo.localID] = chosen.id
+            let second = LibraryIndex.second(of: captureTime.timeIntervalSince1970 + offset)
+
+            if let chosen = choose(from: index.photos(at: second), like: photo) {
+                result[photo.localID] = chosen.id
+                continue
+            }
+            // Nothing on that second at all: allow a second either way, for the
+            // frames where the two ends disagree about where the fraction
+            // rounded. Only when the second itself is empty, so a burst is
+            // never resolved by reaching into its neighbours.
+            guard index.photos(at: second).isEmpty else { continue }
+            for neighbour in [second - 1, second + 1] {
+                guard let chosen = choose(from: index.photos(at: neighbour), like: photo) else { continue }
+                result[photo.localID] = chosen.id
+                break
+            }
         }
         return result
     }

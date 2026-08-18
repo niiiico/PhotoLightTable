@@ -42,6 +42,37 @@ struct LightroomMatchTests {
         #expect(outcome.unmatched.isEmpty)
     }
 
+    @Test("The library's fraction of a second does not hide a photograph")
+    func subSecondsDoNotHide() {
+        // Lightroom writes 12:15:07.26 and truncates to :07; the library keeps
+        // the fraction. Rounding this side filed everything past the halfway
+        // mark one second late — half a shoot, from any camera that records
+        // sub-seconds.
+        let index = LightroomMatch.LibraryIndex([
+            FakePhoto(id: "late", creationDate: moment(30).addingTimeInterval(0.75)),
+            FakePhoto(id: "early", creationDate: moment(90).addingTimeInterval(0.2)),
+        ])
+        let outcome = LightroomMatch.match([catalogPhoto(1, at: 30), catalogPhoto(2, at: 90)],
+                                           in: index)
+
+        #expect(outcome.matched == [1: "late", 2: "early"])
+    }
+
+    @Test("A second either way is allowed, but only when that second is empty")
+    func neighbouringSecond() {
+        let index = LightroomMatch.LibraryIndex([FakePhoto(id: "asset", creationDate: moment(31))])
+        #expect(LightroomMatch.match([catalogPhoto(1, at: 30)], in: index).matched == [1: "asset"])
+
+        // A burst is not resolved by reaching into its neighbours: the frame on
+        // the exact second is ambiguous, and that is an answer.
+        let burst = LightroomMatch.LibraryIndex([
+            FakePhoto(id: "a", creationDate: moment(30)),
+            FakePhoto(id: "b", creationDate: moment(30)),
+            FakePhoto(id: "c", creationDate: moment(31)),
+        ])
+        #expect(LightroomMatch.match([catalogPhoto(1, at: 30)], in: burst).matched.isEmpty)
+    }
+
     @Test("A photograph the library does not hold stays unmatched")
     func missingStaysMissing() {
         let index = LightroomMatch.LibraryIndex([FakePhoto(id: "asset-a", creationDate: moment(0))])
