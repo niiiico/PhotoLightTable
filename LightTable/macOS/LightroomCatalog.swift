@@ -8,10 +8,11 @@ import SQLite3
 /// tables: the collections, what is in them, and when each photograph was
 /// taken. Nothing is written, ever — this reads someone else's library.
 ///
-/// It reads a *copy*. Lightroom keeps the catalogue open with a write-ahead log
-/// beside it, often hundreds of megabytes of it; opening the original read-only
-/// either misses everything in that log or needs to touch shared memory in a
-/// directory we have no business writing to.
+/// It reads a *copy*, for two reasons. Lightroom keeps the catalogue open with a
+/// write-ahead log beside it, often hundreds of megabytes of it, and a reader
+/// that ignores the log sees a stale library. And a WAL database cannot be
+/// opened read-only at all without write access to the directory it sits in,
+/// which is someone else's library folder.
 enum LightroomCatalog {
     struct Collection: Identifiable {
         var id: Int64
@@ -46,8 +47,15 @@ enum LightroomCatalog {
         let copy = try copyAside(url)
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
 
+        // The copy is opened for writing, which sounds worse than it is: a
+        // catalogue is kept in WAL mode, and opening a WAL database read-only
+        // means SQLite has to attach the shared-memory file that goes with it —
+        // which it cannot create without write access, so the open fails with
+        // "unable to open database file" before a single row is read. The
+        // original is never opened at all; this is a copy in a temporary
+        // directory, deleted on the way out.
         var handle: OpaquePointer?
-        guard sqlite3_open_v2(copy.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+        guard sqlite3_open_v2(copy.path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
               let db = handle else {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
             sqlite3_close(handle)
