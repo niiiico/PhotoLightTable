@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var showsShortcuts = false
     @State private var pendingImport: PhotosImport?
     @State private var pendingVariantRebuild: VariantRebuilder.Proposal?
+    @State private var pendingLightroom: LightroomImport.Proposal?
+    @State private var lightroomError: String?
     @State private var isGoingToDate = false
     @State private var targetDate = Date()
     @StateObject private var projection = LibraryProjection()
@@ -36,7 +38,14 @@ struct ContentView: View {
                                ratings: ratings)
         }
 
-        return Debug.time("window body") { window }
+        return Debug.time("window body") { window.modifier(LightroomImportAlerts(
+            proposal: $pendingLightroom,
+            error: $lightroomError,
+            onImport: { proposal in
+                LightroomImport.apply(proposal, library: library.items, context: context)
+                scheduleEventAlbumSync()
+            },
+            onChoose: chooseLightroomCatalog)) }
     }
 
     private var window: some View {
@@ -226,6 +235,27 @@ struct ContentView: View {
               let landing = projection.sections[index].items.first else { return }
         app.focusID = landing.id
         app.selectedIDs = [landing.id]
+    }
+
+    /// Asks for a catalogue, then works out what it would make.
+    ///
+    /// The catalogue is usually open in Lightroom and lives on a network
+    /// volume, so reading it is slow enough to be worth doing off the main
+    /// thread — but the library it is matched against is `PhotoItem`s, which
+    /// carry `PHAsset`s and belong here.
+    private func chooseLightroomCatalog() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.data]
+        panel.allowsOtherFileTypes = true
+        panel.message = "Choose a Lightroom catalogue (.lrcat)"
+        panel.prompt = "Read"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            pendingLightroom = try LightroomImport.proposal(for: url, library: library.items)
+        } catch {
+            lightroomError = error.localizedDescription
+        }
     }
 
     // MARK: - Toolbar
@@ -465,6 +495,49 @@ extension EventEditor.Mode: Identifiable {
         case .create(let seedIDs): return "create-\(seedIDs.count)-\(seedIDs.first ?? "none")"
         case .edit(let event): return "edit-\(event.persistentModelID.hashValue)"
         }
+    }
+}
+
+
+/// The Lightroom import's own alerts, kept out of the window's body.
+///
+/// Not a matter of taste: the body is one expression, and past a certain length
+/// the type-checker gives up on it rather than slowing down.
+private struct LightroomImportAlerts: ViewModifier {
+    @Binding var proposal: LightroomImport.Proposal?
+    @Binding var error: String?
+    let onImport: (LightroomImport.Proposal) -> Void
+    let onChoose: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .importLightroom)) { _ in
+                onChoose()
+            }
+            .alert("Import Lightroom collections?",
+                   isPresented: Binding(get: { proposal != nil },
+                                        set: { if !$0 { proposal = nil } }),
+                   presenting: proposal) { pending in
+                if pending.isEmpty {
+                    Button("OK", role: .cancel) { proposal = nil }
+                } else {
+                    Button("Create Events") {
+                        onImport(pending)
+                        proposal = nil
+                    }
+                    Button("Cancel", role: .cancel) { proposal = nil }
+                }
+            } message: { pending in
+                Text(pending.message)
+            }
+            .alert("That catalogue could not be read",
+                   isPresented: Binding(get: { error != nil },
+                                        set: { if !$0 { error = nil } }),
+                   presenting: error) { _ in
+                Button("OK", role: .cancel) { error = nil }
+            } message: { message in
+                Text(message)
+            }
     }
 }
 

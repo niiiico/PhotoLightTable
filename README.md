@@ -479,6 +479,38 @@ AppKit how many clicks this is (`NSApp.currentEvent?.clickCount`) — it has
 already counted them, so nothing needs waiting for. The same reading of AppKit
 was already there for modifier flags, for the same reason.
 
+## Lightroom collections
+
+A `.lrcat` is a SQLite database, and Debug ▸ Import Lightroom Collections reads
+one: each ordinary collection becomes an event holding exactly the photographs
+that were found. Smart collections are left out — a saved question is not a list
+of photographs. Collection sets become the event's name (`Trips / 2011 japan`).
+
+Read from a **copy**. Lightroom keeps the catalogue open with a write-ahead log
+beside it, often hundreds of megabytes; opening the original read-only either
+misses everything in that log or wants to write shared memory into someone
+else's library folder. Nothing is written to the catalogue, ever.
+
+### Finding the right photographs
+
+Nothing is matched by file. The catalogue names raws on a disk somewhere; this
+app knows a photo library, and by now the file has usually been renamed,
+re-wrapped as a JPEG, or imported twice.
+
+What both ends agree on is **when the shutter opened**, to the second, which is
+a fine enough sieve that two frames from one camera cannot share one. Where
+several photographs do land on the same second, pixel dimensions break the tie —
+either way round, since rotation is metadata in a raw and pixels in an export.
+Anything still ambiguous is left unmatched: an event built from the wrong frames
+is worse than one that says it is missing some.
+
+The catch is that Lightroom stores the camera's own clock with no timezone on
+it, and a photo library stores the moment absolutely. A fortnight abroad with the
+clock left on home time therefore lands nine hours out — for every frame in the
+collection, consistently. So the shift is looked for once per collection, over
+whole and half hours, and taken only when it explains most of the collection
+rather than one or two frames of it.
+
 ## Editing
 
 Adjustments are **one edit session with a single save**, not an Apply between

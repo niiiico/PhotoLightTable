@@ -106,4 +106,5 @@ extension Notification.Name {
     static let rebuildFromPhotos = Notification.Name("LightTable.rebuildFromPhotos")
     static let rebuildVariants = Notification.Name("LightTable.rebuildVariants")
     static let goToDate = Notification.Name("LightTable.goToDate")
+    static let importLightroom = Notification.Name("LightTable.importLightroom")
 }
