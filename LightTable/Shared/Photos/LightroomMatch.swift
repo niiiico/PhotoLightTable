@@ -43,8 +43,18 @@ enum LightroomMatch {
         /// The shift that made the most of them line up, in seconds.
         var offset: TimeInterval = 0
         var unmatched: [CatalogPhoto] = []
+        /// Of the unmatched: how many had photographs on their second that this
+        /// refused to choose between.
+        ///
+        /// The distinction that matters when a collection comes up short. Not
+        /// in the library at all is an answer — the raws were never imported.
+        /// Present but ambiguous is a matching problem, and a different one to
+        /// go and solve.
+        var ambiguous: Int = 0
 
         var count: Int { matched.count }
+        /// Unmatched with nothing on their second: absent rather than unclear.
+        var absent: Int { unmatched.count - ambiguous }
     }
 
     /// Whole hours either way, and the half-hour zones.
@@ -120,38 +130,48 @@ enum LightroomMatch {
 
         for offset in offsets where offset != 0 {
             let candidate = matched(dated, in: index, offset: offset)
-            if candidate.count > best.count + margin {
+            if candidate.matches.count > best.matches.count + margin {
                 best = candidate
                 bestOffset = offset
             }
         }
 
-        let matchedIDs = Set(best.keys)
-        return Outcome(matched: best,
+        let matchedIDs = Set(best.matches.keys)
+        return Outcome(matched: best.matches,
                        offset: bestOffset,
-                       unmatched: photos.filter { !matchedIDs.contains($0.localID) })
+                       unmatched: photos.filter { !matchedIDs.contains($0.localID) },
+                       ambiguous: best.ambiguous)
+    }
+
+    private struct Pass {
+        var matches: [Int64: String] = [:]
+        var ambiguous = 0
     }
 
     private static func matched(_ photos: [CatalogPhoto],
                                 in index: LibraryIndex,
-                                offset: TimeInterval) -> [Int64: String] {
-        var result: [Int64: String] = [:]
+                                offset: TimeInterval) -> Pass {
+        var result = Pass()
         for photo in photos {
             guard let captureTime = photo.captureTime else { continue }
             let second = LibraryIndex.second(of: captureTime.timeIntervalSince1970 + offset)
 
-            if let chosen = choose(from: index.photos(at: second), like: photo) {
-                result[photo.localID] = chosen.id
+            let onTheSecond = index.photos(at: second)
+            if let chosen = choose(from: onTheSecond, like: photo) {
+                result.matches[photo.localID] = chosen.id
+                continue
+            }
+            if !onTheSecond.isEmpty {
+                result.ambiguous += 1
                 continue
             }
             // Nothing on that second at all: allow a second either way, for the
             // frames where the two ends disagree about where the fraction
-            // rounded. Only when the second itself is empty, so a burst is
-            // never resolved by reaching into its neighbours.
-            guard index.photos(at: second).isEmpty else { continue }
+            // rounded. Reached only when the second itself is empty, so a burst
+            // is never resolved out of its neighbours.
             for neighbour in [second - 1, second + 1] {
                 guard let chosen = choose(from: index.photos(at: neighbour), like: photo) else { continue }
-                result[photo.localID] = chosen.id
+                result.matches[photo.localID] = chosen.id
                 break
             }
         }

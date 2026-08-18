@@ -79,18 +79,41 @@ enum LightroomImport {
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
-            if Debug.isEnabled {
-                let hours = outcome.offset / 3600
-                fputs(String(format: "[lightroom] %@ — %d of %d found%@\n",
-                             collection.fullName, assetIDs.count, collection.photos.count,
-                             hours == 0 ? "" : String(format: " (clock %+.1f h)", hours)),
-                      stderr)
-            }
+            if Debug.isEnabled { log(collection, outcome) }
         }
         if Debug.isEnabled {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
         }
         return proposal
+    }
+
+    /// What a collection came to, in the terms that decide what to do next:
+    /// how many were not in the library at all, how many were there but too
+    /// alike to choose between, and what the file types of the missing were —
+    /// all raws usually means a shoot that was never imported.
+    private static func log(_ collection: LightroomCatalog.Collection,
+                            _ outcome: LightroomMatch.Outcome) {
+        var line = "[lightroom] \(collection.fullName) — "
+        line += "\(outcome.count) of \(collection.photos.count) found"
+
+        let hours = outcome.offset / 3600
+        if hours != 0 { line += String(format: " (clock %+.1f h)", hours) }
+        if outcome.absent > 0 { line += ", \(outcome.absent) absent" }
+        if outcome.ambiguous > 0 { line += ", \(outcome.ambiguous) ambiguous" }
+
+        var kinds: [String: Int] = [:]
+        for photo in outcome.unmatched {
+            let kind = (photo.fileName as NSString).pathExtension.uppercased()
+            kinds[kind.isEmpty ? "?" : kind, default: 0] += 1
+        }
+        if !kinds.isEmpty {
+            let listed = kinds.sorted { $0.value > $1.value }
+                .prefix(3)
+                .map { "\($0.value) \($0.key)" }
+                .joined(separator: ", ")
+            line += " [missing: \(listed)]"
+        }
+        fputs(line + "\n", stderr)
     }
 
     /// Makes an event per plan.
