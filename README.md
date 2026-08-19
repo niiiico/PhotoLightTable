@@ -491,6 +491,23 @@ beside it, often hundreds of megabytes; opening the original read-only either
 misses everything in that log or wants to write shared memory into someone
 else's library folder. Nothing is written to the catalogue, ever.
 
+### Photographs Photos hides
+
+Hidden photographs are not in an ordinary fetch and never will be, whatever
+`includeHiddenAssets` says: Apple's documentation is exact — *"Hidden assets are
+only available in the hidden Smart Album or in user Smart Albums."* So they are
+collected from that album by name and merged into the library list, which is then
+re-sorted, because everything downstream relies on newest-first.
+
+Two things gate it, and both belong to the owner rather than to this app. The
+Hidden album can require authentication, and that setting is **on by default**;
+while it is on, the system returns nothing from the album however it is asked.
+And the merge itself is behind `LIGHTTABLE_INCLUDE_HIDDEN`, off unless asked for:
+hiding a photograph is a decision, and a light table that quietly ignores it is
+not one.
+
+With both lifted, a 2006 shoot that had matched 0 of 113 matched 113 of 113.
+
 ### Finding the right photographs
 
 Nothing is matched by file. The catalogue names raws on a disk somewhere; this

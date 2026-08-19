@@ -106,6 +106,23 @@ final class PhotoLibraryService: NSObject, ObservableObject {
 
     // MARK: - Fetching
 
+    /// The photographs in Photos' Hidden album, when it will say.
+    private static func hiddenImages() -> [PHAsset] {
+        let albums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum,
+                                                             subtype: .smartAlbumAllHidden,
+                                                             options: nil)
+        guard let album = albums.firstObject else { return [] }
+
+        let options = PHFetchOptions()
+        options.includeHiddenAssets = true
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        var assets: [PHAsset] = []
+        PHAsset.fetchAssets(in: album, options: options).enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
+        return assets
+    }
+
     func reload() async {
         isLoading = true
         defer { isLoading = false }
@@ -113,20 +130,36 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.includeHiddenAssets = Debug.includesHidden
-        options.includeHiddenAssets = false
 
         let result = PHAsset.fetchAssets(with: options)
         fetchResult = result
+
+        // Hidden photographs are not in that result and never will be. Apple's
+        // documentation is exact about it: "Hidden assets are only available in
+        // the hidden Smart Album or in user Smart Albums" — a general fetch
+        // does not return them however the option is set, so they are collected
+        // from the album itself and merged in.
+        //
+        // Even that only answers while the owner has turned off the
+        // authentication the Hidden album asks for, which is on by default.
+        let hidden = Debug.includesHidden ? Self.hiddenImages() : []
 
         // Snapshotting a large library blocks, so do it off the main actor and
         // hand back only the value types.
         let snapshot = await Task.detached(priority: .userInitiated) { () -> [PhotoItem] in
             var built: [PhotoItem] = []
-            built.reserveCapacity(result.count)
+            built.reserveCapacity(result.count + hidden.count)
             result.enumerateObjects { asset, _, _ in
                 built.append(PhotoItem(asset: asset))
             }
+            guard !hidden.isEmpty else { return built }
+
+            // Merged and re-sorted rather than appended: everything downstream
+            // relies on this list being newest first — the day sections, the
+            // timeline rail, and `AppModel.sort`, which is a reverse rather
+            // than a sort precisely because of it.
+            built.append(contentsOf: hidden.map(PhotoItem.init))
+            built.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
             return built
         }.value
 
