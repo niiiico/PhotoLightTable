@@ -341,7 +341,7 @@ struct LightTableView: View {
         // Hidden photographs are left out of the window: decoding one ahead of
         // time is still decoding it, and nothing is ever going to draw it.
         ThumbnailLoader.shared.updateCaching(
-            visible: items[lower..<upper].filter { !$0.isHidden },
+            visible: items[lower..<upper].filter { app.revealsHiddenPhotos || !$0.isHidden },
             size: CGSize(width: app.thumbnailSize, height: app.thumbnailSize),
             mode: ThumbnailFillMode(rawValue: fillModeRaw) ?? .fill)
     }
@@ -363,6 +363,7 @@ struct LightTableView: View {
                       size: app.thumbnailSize,
                       surfaces: surfaces,
                       rating: ratings.rating(for: item.id),
+                      revealsHidden: app.revealsHiddenPhotos,
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: app.selectedIDs.count > 1

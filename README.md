@@ -512,9 +512,13 @@ is a mark — `eye.slash`, not a blur,
 because a blurred photograph is still the photograph and is often recognisable at
 thumbnail size — and its pixels are never requested, rather than fetched and
 covered — including in the prefetch window handed to PhotoKit, since decoding one
-ahead of time is still decoding it. The loupe says what it is in words, and offers to unhide it, which
-raises Photos' own confirmation: this app does not get to make that decision
-quietly.
+ahead of time is still decoding it. The loupe says what it is in words.
+
+Revealing them is a **toolbar switch**, and it reveals them *here* — nothing in
+Photos changes, because a standing decision about a library should not be undone
+by a button in a picture viewer. It asks first, it is off at every launch, and it
+is absent entirely when the library holds nothing hidden: a control that can only
+ever do nothing is one more thing to read.
 
 They are carried so that an **event made of hidden photographs still knows what
 it holds**. An event whose every member is hidden is marked hidden in the

@@ -73,6 +73,7 @@ struct TouchGrid: View {
                       size: cellSize,
                       surfaces: surfaces,
                       rating: ratings.rating(for: item.id),
+                      revealsHidden: app.revealsHiddenPhotos,
                       isSelected: app.selectedIDs.contains(item.id),
                       isFocused: app.focusID == item.id,
                       showsSelectionBadge: isSelecting && app.selectedIDs.contains(item.id),

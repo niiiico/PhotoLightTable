@@ -8,6 +8,8 @@ struct ThumbnailCell: View, Equatable {
     /// that would not repaint when the appearance changes under it.
     let surfaces: Surfaces
     let rating: RatingValue
+    /// Whether a hidden photograph is drawn or marked.
+    var revealsHidden: Bool = false
     let isSelected: Bool
     let isFocused: Bool
     /// Only set during a genuine multi-selection — a checkmark on every cell you
@@ -43,6 +45,8 @@ struct ThumbnailCell: View, Equatable {
     }
 
     private var isActive: Bool { isSelected || isFocused }
+
+    private var isCovered: Bool { item.isHidden && !revealsHidden }
 
     /// What is drawn in place of a photograph Photos hides.
     ///
@@ -117,7 +121,7 @@ struct ThumbnailCell: View, Equatable {
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
         .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
-            guard !item.isHidden else { return }
+            guard !isCovered else { return }
             // Referenced directly rather than held in a @StateObject: the
             // loader is shared, so wrapping it per cell made every thumbnail
             // observe it for no benefit.
@@ -204,7 +208,7 @@ struct ThumbnailCell: View, Equatable {
             RoundedRectangle(cornerRadius: 3)
                 .fill(fillMode == .fit ? surfaces.mat : surfaces.mat.opacity(0.35))
 
-            if item.isHidden {
+            if isCovered {
                 lockedFace
             } else if let image = displayed {
                 Image(platformImage: image)
@@ -351,5 +355,6 @@ struct ThumbnailCell: View, Equatable {
             && lhs.isStackExpanded == rhs.isStackExpanded
             && lhs.showsAssetID == rhs.showsAssetID
             && lhs.surfaces.levels == rhs.surfaces.levels
+            && lhs.revealsHidden == rhs.revealsHidden
     }
 }

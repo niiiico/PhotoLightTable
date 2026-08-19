@@ -48,7 +48,11 @@ struct ContentView: View {
                 LightroomImport.apply(proposal, library: library.items, context: context)
                 scheduleEventAlbumSync()
             },
-            onChoose: chooseLightroomCatalog)) }
+            onChoose: chooseLightroomCatalog))
+            .modifier(RevealHiddenAlert(
+                isPresented: Binding(get: { app.isRevealPending },
+                                     set: { app.isRevealPending = $0 }),
+                onShow: { app.revealsHiddenPhotos = true })) }
     }
 
     private var window: some View {
@@ -245,6 +249,14 @@ struct ContentView: View {
         return "Showing \(visibleItems.count) of \(scopedItems.count)"
     }
 
+    /// Whether the control has anything to control.
+    ///
+    /// Absent rather than disabled when the library holds nothing hidden: a
+    /// button that can only ever do nothing is one more thing to read.
+    private var hasHiddenPhotographs: Bool {
+        library.items.contains(where: \.isHidden)
+    }
+
     /// The day of the photograph the keyboard is on.
     private var focusedDate: Date? {
         guard let focusID = app.focusID else { return nil }
@@ -377,6 +389,26 @@ struct ContentView: View {
 
         bareItem {
             syncStatus
+        }
+
+        bareItem {
+            if hasHiddenPhotographs {
+                Button {
+                    if app.revealsHiddenPhotos {
+                        app.revealsHiddenPhotos = false
+                    } else {
+                        app.isRevealPending = true
+                    }
+                } label: {
+                    Label(app.revealsHiddenPhotos ? "Hide Hidden Photographs" : "Show Hidden Photographs",
+                          systemImage: app.revealsHiddenPhotos ? "eye" : "eye.slash")
+                        .labelStyle(.iconOnly)
+                }
+                .foregroundStyle(app.revealsHiddenPhotos ? Color.accentColor : .secondary)
+                .help(app.revealsHiddenPhotos
+                      ? "Cover the photographs Photos hides"
+                      : "Show the photographs Photos hides, here only")
+            }
         }
 
         bareItem {
@@ -526,6 +558,21 @@ extension EventEditor.Mode: Identifiable {
 }
 
 
+/// The one question this app asks before drawing something Photos hides.
+private struct RevealHiddenAlert: ViewModifier {
+    @Binding var isPresented: Bool
+    let onShow: () -> Void
+
+    func body(content: Content) -> some View {
+        content.alert("Show photographs hidden in Photos?", isPresented: $isPresented) {
+            Button("Show", action: onShow)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They will be shown here until you turn this off, and covered again next time the app opens. Nothing in Photos changes: they stay hidden there.")
+        }
+    }
+}
+
 /// The Lightroom import's own alerts, kept out of the window's body.
 ///
 /// Not a matter of taste: the body is one expression, and past a certain length
@@ -557,7 +604,7 @@ private struct LightroomImportAlerts: ViewModifier {
             } message: { pending in
                 Text(pending.message)
             }
-            .alert("That catalogue could not be read",
+        .alert("That catalogue could not be read",
                    isPresented: Binding(get: { error != nil },
                                         set: { if !$0 { error = nil } }),
                    presenting: error) { _ in

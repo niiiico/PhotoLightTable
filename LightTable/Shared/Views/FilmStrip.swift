@@ -19,6 +19,7 @@ struct FilmStrip<Menu: View>: View {
     /// photograph: its name, and how many the family holds. Same reason the
     /// verdict is passed in — the strip does not read the store itself.
     let familyFor: (String) -> (label: String?, count: Int)
+    var revealsHidden: Bool = false
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
     /// The right-click menu for a frame. Supplied by the host rather than built
@@ -40,7 +41,8 @@ struct FilmStrip<Menu: View>: View {
                                           isCurrent: item.id == currentID,
                                           rating: ratingFor(item.id),
                                           family: familyFor(item.id),
-                                          surfaces: surfaces)
+                                          surfaces: surfaces,
+                                          revealsHidden: revealsHidden)
                                 .id(item.id)
                                 .onTapGesture { onSelect(item.id) }
                                 .contextMenu { menuFor(item) }
@@ -93,6 +95,7 @@ private struct FilmStripCell: View, Equatable {
     /// Passed in for the same reason as `ThumbnailCell`'s: this cell is
     /// compared, and the comparison cannot see the environment.
     let surfaces: Surfaces
+    let revealsHidden: Bool
 
     @State private var image: PlatformImage?
 
@@ -170,7 +173,7 @@ private struct FilmStripCell: View, Equatable {
         .opacity(isCurrent ? 1 : 0.55)
         .animation(.easeOut(duration: 0.15), value: isCurrent)
         .task(id: item.id) {
-            guard !item.isHidden else { return }
+            guard !(item.isHidden && !revealsHidden) else { return }
             for await next in ThumbnailLoader.shared.thumbnails(
                 for: item,
                 size: CGSize(width: height, height: height),
@@ -185,5 +188,6 @@ private struct FilmStripCell: View, Equatable {
             && lhs.height == rhs.height && lhs.rating == rhs.rating
             && lhs.family == rhs.family
             && lhs.surfaces.levels == rhs.surfaces.levels
+            && lhs.revealsHidden == rhs.revealsHidden
     }
 }

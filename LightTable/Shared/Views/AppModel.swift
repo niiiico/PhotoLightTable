@@ -88,6 +88,16 @@ final class AppModel: ObservableObject {
     @Published var colorFilter: Set<ColorLabel> = []
     @Published var thumbnailSize: Double = 180
     @Published var isLoupePresented = false
+    /// Whether photographs Photos hides are drawn rather than marked.
+    ///
+    /// Deliberately not remembered. Hiding a photograph is a standing decision
+    /// and revealing it is a momentary one: the app starts every launch with
+    /// them covered, and nothing about the library changes either way — this
+    /// only says whether they are drawn here, now.
+    @Published var revealsHiddenPhotos = false
+    /// Set when something asks to reveal them; the window turns it into a
+    /// question and clears it either way.
+    @Published var isRevealPending = false
     /// Looseness used by the "select related" shortcut in the grid.
     @Published var relatedGranularity: ClusterGranularity = .day
 

@@ -72,6 +72,11 @@ struct LoupeView: View {
                 isRoot ? ratings.family(of: id).count : 1)
     }
 
+    /// A photograph Photos hides, while this app is not revealing them.
+    private var isCovered: Bool {
+        current?.isHidden == true && !app.revealsHiddenPhotos
+    }
+
     private var current: PhotoItem? {
         guard let focusID = app.focusID else { return items.first }
         return items.first { $0.id == focusID } ?? items.first
@@ -88,6 +93,7 @@ struct LoupeView: View {
                               currentID: current?.id,
                               ratingFor: { ratings.rating(for: $0) },
                               familyFor: { family(of: $0) },
+                              revealsHidden: app.revealsHiddenPhotos,
                               onSelect: { app.focusID = $0 },
                               onDismiss: { showsFilmStrip = false },
                               menuFor: { item in
@@ -164,9 +170,10 @@ struct LoupeView: View {
     ///
     /// Not a blur and not a padlock on its own: whoever is looking has to know
     /// why the screen is empty and what to do about it, and "hidden in Photos"
-    /// is the whole explanation. The button asks Photos to unhide it, which
-    /// raises the system's own confirmation — this app does not get to make
-    /// that decision quietly.
+    /// is the whole explanation. The button reveals them *here*, for as long as
+    /// this window is open — it does not unhide anything in Photos, because a
+    /// standing decision about a library should not be undone by a button in a
+    /// picture viewer.
     private var lockedNote: some View {
         VStack(spacing: 14) {
             Image(systemName: "eye.slash")
@@ -182,28 +189,11 @@ struct LoupeView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.45))
 
-            if let current {
-                Button("Unhide in Photos…") { unhide(current) }
-                    .buttonStyle(.borderedProminent)
-                    .help("Photos will ask you to confirm")
-            }
+            Button("Show Hidden Photographs…") { app.isRevealPending = true }
+                .buttonStyle(.borderedProminent)
+                .help("Shows them here until you turn it off. Nothing in Photos changes.")
         }
         .padding(40)
-    }
-
-    /// Asks Photos to unhide, which raises its own confirmation.
-    private func unhide(_ item: PhotoItem) {
-        PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest(for: item.asset).isHidden = false
-        } completionHandler: { success, error in
-            Task { @MainActor in
-                if success {
-                    await library.reload()
-                } else if let error {
-                    editError = error.localizedDescription
-                }
-            }
-        }
     }
 
     private var photoArea: some View {
@@ -215,7 +205,7 @@ struct LoupeView: View {
                     ComparisonView(before: before, after: after,
                                    mode: comparison,
                                    splitPosition: $splitPosition)
-                } else if current?.isHidden == true {
+                } else if isCovered {
                     lockedNote
                 } else if let image = isEditing ? (edit.preview ?? image) : image {
                     Image(platformImage: image)
@@ -1498,7 +1488,7 @@ struct LoupeView: View {
         // describe the pre-edit asset — the refreshed one has to be taken from
         // the service directly.
         let refreshed = library.items.first { $0.id == current.id } ?? current
-        guard !refreshed.isHidden else { return }
+        guard !isCovered else { return }
         for await next in ThumbnailLoader.shared.fullImages(for: refreshed, maxDimension: 2400) {
             image = next
         }
@@ -1533,7 +1523,7 @@ struct LoupeView: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
-        guard !current.isHidden else {
+        guard !isCovered else {
             image = nil
             isLoading = false
             return
