@@ -92,6 +92,8 @@ enum LightroomImport {
                 fputs("[lightroom] hidden album: not available\n", stderr)
             }
 
+            probeAlbum()
+
             let dated = library.compactMap(\.creationDate)
             fputs("[lightroom] library: \(library.count) photographs" +
                   (Debug.includesHidden ? " (hidden included)" : "") +
@@ -122,6 +124,43 @@ enum LightroomImport {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
         }
         return proposal
+    }
+
+    /// Asks a named album what it holds, hidden photographs included.
+    ///
+    /// Two counts, because the difference between them is the whole answer: how
+    /// many the album vends with hidden photographs allowed, and how many of
+    /// those say they are hidden.
+    private static func probeAlbum() {
+        guard let name = Debug.probeAlbum else { return }
+
+        let albums = PHAssetCollection.fetchAssetCollections(with: .album,
+                                                             subtype: .any,
+                                                             options: nil)
+        var found: PHAssetCollection?
+        albums.enumerateObjects { album, _, stop in
+            if album.localizedTitle == name {
+                found = album
+                stop.pointee = true
+            }
+        }
+        guard let album = found else {
+            fputs("[lightroom] album \"\(name)\": not found\n", stderr)
+            return
+        }
+
+        let options = PHFetchOptions()
+        options.includeHiddenAssets = true
+        let assets = PHAsset.fetchAssets(in: album, options: options)
+        var hidden = 0
+        var earliest: Date?
+        assets.enumerateObjects { asset, _, _ in
+            if asset.isHidden { hidden += 1 }
+            if let date = asset.creationDate, earliest == nil || date < earliest! { earliest = date }
+        }
+        fputs("[lightroom] album \"\(name)\": \(assets.count) photographs, \(hidden) of them hidden" +
+              (earliest.map { ", from \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
+              "\n", stderr)
     }
 
     /// What a collection came to, in the terms that decide what to do next:

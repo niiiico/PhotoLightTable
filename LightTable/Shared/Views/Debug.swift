@@ -25,6 +25,20 @@ enum Debug {
         isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_INCLUDE_HIDDEN"] == "1"
     }
 
+    /// A Photos album to interrogate at launch.
+    ///
+    /// For the one question the ordinary fetch cannot answer: `PHAsset`'s own
+    /// header says a hidden photograph is kept out of moments but "may still be
+    /// included in other smart or regular album collections". If that holds, an
+    /// album is a way for someone to hand this app photographs it is otherwise
+    /// not allowed to see, without unhiding them.
+    static var probeAlbum: String? {
+        guard isEnabled,
+              let name = ProcessInfo.processInfo.environment["LIGHTTABLE_PROBE_ALBUM"],
+              !name.isEmpty else { return nil }
+        return name
+    }
+
     /// A Lightroom catalogue to survey at launch, for working on the matching
     /// without a hand on the menu.
     ///
