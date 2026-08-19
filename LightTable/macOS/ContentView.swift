@@ -194,7 +194,7 @@ struct ContentView: View {
             guard !hasSurveyedCatalog, count > 0, let catalog = Debug.lightroomCatalog else { return }
             hasSurveyedCatalog = true
             do {
-                _ = try LightroomImport.proposal(for: catalog, library: library.items)
+                _ = try LightroomImport.proposal(for: catalog, library: library.items, ratings: ratings)
             } catch {
                 fputs("[lightroom] \(error.localizedDescription)\n", stderr)
             }
@@ -264,7 +264,9 @@ struct ContentView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            pendingLightroom = try LightroomImport.proposal(for: url, library: library.items)
+            pendingLightroom = try LightroomImport.proposal(for: url,
+                                                            library: library.items,
+                                                            ratings: ratings)
         } catch {
             lightroomError = error.localizedDescription
         }

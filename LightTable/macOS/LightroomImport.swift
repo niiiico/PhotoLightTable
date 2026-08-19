@@ -61,7 +61,10 @@ enum LightroomImport {
     }
 
     /// Reads the catalogue and works out what could be made, without making it.
-    static func proposal(for catalog: URL, library: [PhotoItem]) throws -> Proposal {
+    @MainActor
+    static func proposal(for catalog: URL,
+                         library: [PhotoItem],
+                         ratings: RatingStore) throws -> Proposal {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
         let probe = Debug.isEnabled ? NearestPhoto(library) : nil
@@ -93,6 +96,7 @@ enum LightroomImport {
             }
 
             probeAlbum()
+            probeIdentifiers(library: library, ratings: ratings)
 
             let dated = library.compactMap(\.creationDate)
             fputs("[lightroom] library: \(library.count) photographs" +
@@ -124,6 +128,33 @@ enum LightroomImport {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
         }
         return proposal
+    }
+
+    /// Whether a photograph this app has seen before can still be fetched by
+    /// its identifier once the library stops listing it.
+    ///
+    /// The question the whole unhide-and-re-hide plan rests on, and it can be
+    /// asked without unhiding anything: the store holds identifiers of
+    /// photographs judged in the past, and any of those the visible library no
+    /// longer lists is exactly the case in question. If they come back by
+    /// identifier and say they are hidden, the header's promise holds. If
+    /// nothing comes back, hiding is a wall on both sides of the fetch.
+    @MainActor
+    private static func probeIdentifiers(library: [PhotoItem], ratings: RatingStore) {
+        let visible = Set(library.map(\.id))
+        let known = Set(ratings.ratings.keys)
+        let missing = Array(known.subtracting(visible))
+        guard !missing.isEmpty else {
+            fputs("[lightroom] identifiers: every photograph the store knows is in the library\n", stderr)
+            return
+        }
+
+        let fetched = PHAsset.fetchAssets(withLocalIdentifiers: missing, options: nil)
+        var hidden = 0
+        fetched.enumerateObjects { asset, _, _ in if asset.isHidden { hidden += 1 } }
+        fputs("[lightroom] identifiers: \(missing.count) judged photographs are not in the library; "
+              + "fetching them by identifier returns \(fetched.count), \(hidden) of which say hidden\n",
+              stderr)
     }
 
     /// Asks a named album what it holds, hidden photographs included.
