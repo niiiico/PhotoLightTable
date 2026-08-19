@@ -499,14 +499,29 @@ only available in the hidden Smart Album or in user Smart Albums."* So they are
 collected from that album by name and merged into the library list, which is then
 re-sorted, because everything downstream relies on newest-first.
 
-Two things gate it, and both belong to the owner rather than to this app. The
-Hidden album can require authentication, and that setting is **on by default**;
-while it is on, the system returns nothing from the album however it is asked.
-And the merge itself is behind `LIGHTTABLE_INCLUDE_HIDDEN`, off unless asked for:
-hiding a photograph is a decision, and a light table that quietly ignores it is
-not one.
+Photos only hands them over at all while its own **require authentication**
+setting for the Hidden album is off — that setting is on by default and belongs
+to the owner, not to this app. With it off, a 2006 shoot that had matched 0 of
+113 matched 113 of 113.
 
-With both lifted, a 2006 shoot that had matched 0 of 113 matched 113 of 113.
+### Carried, never shown
+
+Including them is on by default, because *nothing draws them*. A hidden
+photograph is a mark in the grid and in the strip — `eye.slash`, not a blur,
+because a blurred photograph is still the photograph and is often recognisable at
+thumbnail size — and its pixels are never requested, rather than fetched and
+covered. The loupe says what it is in words, and offers to unhide it, which
+raises Photos' own confirmation: this app does not get to make that decision
+quietly.
+
+They are carried so that an **event made of hidden photographs still knows what
+it holds**. An event whose every member is hidden is marked hidden in the
+sidebar. All, not any: an event of a hundred where one has been hidden is an
+ordinary event with one photograph missing from it, and locking a hundred on the
+strength of one would be a trap. Photos does not attempt this for its own albums,
+and for Photos that is right — album membership there is open-ended. Here it is
+fixed at import: a Lightroom collection is a list somebody made by hand, and it
+does not change under us.
 
 ### Finding the right photographs
 

@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var lightroomError: String?
     @State private var hasSurveyedCatalog = false
     @State private var hasProbedHidden = false
+    @AppStorage(PreferenceKeys.includesHiddenPhotos) private var includesHiddenPhotos = true
     @State private var isGoingToDate = false
     @State private var targetDate = Date()
     @StateObject private var projection = LibraryProjection()
@@ -206,6 +207,10 @@ struct ContentView: View {
             } catch {
                 fputs("[lightroom] \(error.localizedDescription)\n", stderr)
             }
+        }
+        // Whether the Hidden album is collected changes what the library holds.
+        .onChange(of: includesHiddenPhotos) { _, _ in
+            Task { await library.reload() }
         }
         .onChange(of: ratings.revision) { _, _ in scheduleEventAlbumSync() }
         .onChange(of: library.items.count) { _, _ in scheduleEventAlbumSync() }

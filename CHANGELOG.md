@@ -3,7 +3,7 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
-2026-08-19 - Reach the photographs Photos hides — only ever through the Hidden smart album, never through an ordinary fetch — and merge them into the library, behind a flag and behind the owner's own authentication setting. A 2006 shoot went from 0 of 113 to 113 of 113.
+2026-08-19 - Reach the photographs Photos hides — only ever through the Hidden smart album, never through an ordinary fetch — and merge them into the library, behind a flag and behind the owner's own authentication setting. A 2006 shoot went from 0 of 113 to 113 of 113. Carry them without ever drawing them: a mark in the grid, a sentence and an unhide button in the loupe, and an event whose every photograph is hidden marked hidden in the sidebar.
 
 2026-08-18 - Read Lightroom collections out of a .lrcat and make an event from each, matching photographs to the library by the second the shutter opened rather than by file — with the camera-clock offset found once per collection, since a fortnight abroad lands the whole set hours out, the second floored rather than rounded (Lightroom truncates its fractions, which was costing half of every shoot from a camera that records them), raw and JPEG rows collapsed into one photograph, and bursts paired in the order they were taken.
 

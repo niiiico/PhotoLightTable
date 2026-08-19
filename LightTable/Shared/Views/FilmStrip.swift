@@ -170,6 +170,7 @@ private struct FilmStripCell: View, Equatable {
         .opacity(isCurrent ? 1 : 0.55)
         .animation(.easeOut(duration: 0.15), value: isCurrent)
         .task(id: item.id) {
+            guard !item.isHidden else { return }
             for await next in ThumbnailLoader.shared.thumbnails(
                 for: item,
                 size: CGSize(width: height, height: height),

@@ -100,7 +100,7 @@ enum LightroomImport {
 
             let dated = library.compactMap(\.creationDate)
             fputs("[lightroom] library: \(library.count) photographs" +
-                  (Debug.includesHidden ? " (hidden included)" : "") +
+                  (PhotoLibraryService.includesHidden ? " (hidden included)" : "") +
                   (dated.min().map { ", \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
                   (dated.max().map { " to \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
                   "\n", stderr)

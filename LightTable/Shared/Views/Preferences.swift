@@ -62,6 +62,7 @@ enum PreferenceKeys {
     static let loupeShowsFilmStrip = "loupeShowsFilmStrip"
     static let loupeFields = "loupeMetadataFields"
     static let appearance = "appearance"
+    static let includesHiddenPhotos = "includesHiddenPhotos"
 }
 
 /// Which EXIF fields the loupe shows, stored as a comma-separated list of raw

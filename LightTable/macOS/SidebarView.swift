@@ -77,7 +77,15 @@ struct SidebarView: View {
 
     private func eventRow(_ event: LightTableEvent) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(event.name)
+            HStack(spacing: 5) {
+                if counts.isHidden(event) {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help("Every photograph in this event is hidden in Photos")
+                }
+                Text(event.name)
+            }
             Text(dateRangeText(event))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -126,18 +134,32 @@ final class EventCountCache: ObservableObject {
 
     private var key: Key?
     private var counts: [PersistentIdentifier: Int] = [:]
+    private var hidden: Set<PersistentIdentifier> = []
 
     func refresh(events: [LightTableEvent], items: [PhotoItem]) {
         let newKey = Key(itemCount: items.count, eventsStamp: EventMembership.stamp(of: events))
         guard newKey != key else { return }
         key = newKey
-        counts = Dictionary(uniqueKeysWithValues: events.map {
-            ($0.persistentModelID, EventMembership.members(of: $0, in: items).count)
-        })
+
+        let hiddenIDs = Set(items.filter(\.isHidden).map(\.id))
+        counts = [:]
+        hidden = []
+        for event in events {
+            let members = EventMembership.members(of: event, in: items)
+            counts[event.persistentModelID] = members.count
+            if EventPrivacy.isHidden(memberIDs: members.map(\.id), hiddenIDs: hiddenIDs) {
+                hidden.insert(event.persistentModelID)
+            }
+        }
     }
 
     func count(of event: LightTableEvent) -> Int {
         counts[event.persistentModelID] ?? 0
+    }
+
+    /// An event every one of whose photographs Photos hides.
+    func isHidden(_ event: LightTableEvent) -> Bool {
+        hidden.contains(event.persistentModelID)
     }
 }
 #endif

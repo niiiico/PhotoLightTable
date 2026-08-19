@@ -1,4 +1,5 @@
 #if os(macOS)
+import Photos
 import SwiftUI
 
 /// Full-window single-photo review. Same keys as the grid, so the rhythm of
@@ -159,6 +160,52 @@ struct LoupeView: View {
 
     // MARK: - Photo
 
+    /// Said plainly, where the photograph would be.
+    ///
+    /// Not a blur and not a padlock on its own: whoever is looking has to know
+    /// why the screen is empty and what to do about it, and "hidden in Photos"
+    /// is the whole explanation. The button asks Photos to unhide it, which
+    /// raises the system's own confirmation — this app does not get to make
+    /// that decision quietly.
+    private var lockedNote: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "eye.slash")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.white.opacity(0.35))
+
+            Text("Hidden in Photos")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+
+            Text("This photograph is in your Hidden album, so it is not shown here.\nIt still counts as part of this event.")
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.45))
+
+            if let current {
+                Button("Unhide in Photos…") { unhide(current) }
+                    .buttonStyle(.borderedProminent)
+                    .help("Photos will ask you to confirm")
+            }
+        }
+        .padding(40)
+    }
+
+    /// Asks Photos to unhide, which raises its own confirmation.
+    private func unhide(_ item: PhotoItem) {
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest(for: item.asset).isHidden = false
+        } completionHandler: { success, error in
+            Task { @MainActor in
+                if success {
+                    await library.reload()
+                } else if let error {
+                    editError = error.localizedDescription
+                }
+            }
+        }
+    }
+
     private var photoArea: some View {
         GeometryReader { geo in
             ZStack {
@@ -168,6 +215,8 @@ struct LoupeView: View {
                     ComparisonView(before: before, after: after,
                                    mode: comparison,
                                    splitPosition: $splitPosition)
+                } else if current?.isHidden == true {
+                    lockedNote
                 } else if let image = isEditing ? (edit.preview ?? image) : image {
                     Image(platformImage: image)
                         .resizable()
@@ -1483,6 +1532,11 @@ struct LoupeView: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
+        guard !current.isHidden else {
+            image = nil
+            isLoading = false
+            return
+        }
         for await next in ThumbnailLoader.shared.fullImages(for: current, maxDimension: 2400) {
             image = next
         }

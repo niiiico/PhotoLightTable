@@ -19,6 +19,7 @@ private struct AppearanceSettings: View {
     }
 
     @AppStorage(PreferenceKeys.appearance) private var appearanceRaw = AppearancePreference.system.rawValue
+    @AppStorage(PreferenceKeys.includesHiddenPhotos) private var includesHidden = true
 
     private var appearance: Binding<AppearancePreference> {
         Binding(
@@ -55,6 +56,16 @@ private struct AppearanceSettings: View {
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Appearance")
+            }
+
+            Section {
+                Toggle("Include photographs hidden in Photos", isOn: $includesHidden)
+
+                Text("They are never shown — a hidden photograph draws as a mark, and the loupe says where it is and offers to unhide it. Including them is what lets an event made of hidden photographs still know what it holds. Photos only hands them over at all while its own \"require authentication\" setting for the Hidden album is off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Hidden")
             }
         }
         .formStyle(.grouped)

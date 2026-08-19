@@ -44,6 +44,18 @@ struct ThumbnailCell: View, Equatable {
 
     private var isActive: Bool { isSelected || isFocused }
 
+    /// What is drawn in place of a photograph Photos hides.
+    ///
+    /// A mark rather than a blur: a blurred photograph is still the photograph,
+    /// and at thumbnail size it is often recognisable. Nothing is requested
+    /// from the loader either — the pixels are not fetched and then covered,
+    /// they are never asked for.
+    private var lockedFace: some View {
+        Image(systemName: "eye.slash")
+            .font(.system(size: max(11, size * 0.13), weight: .light))
+            .foregroundStyle(.white.opacity(0.3))
+    }
+
     /// What to draw right now.
     ///
     /// The cache is read during layout rather than waited for: a task, however
@@ -105,6 +117,7 @@ struct ThumbnailCell: View, Equatable {
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
         .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
+            guard !item.isHidden else { return }
             // Referenced directly rather than held in a @StateObject: the
             // loader is shared, so wrapping it per cell made every thumbnail
             // observe it for no benefit.
@@ -191,7 +204,9 @@ struct ThumbnailCell: View, Equatable {
             RoundedRectangle(cornerRadius: 3)
                 .fill(fillMode == .fit ? surfaces.mat : surfaces.mat.opacity(0.35))
 
-            if let image = displayed {
+            if item.isHidden {
+                lockedFace
+            } else if let image = displayed {
                 Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: fillMode.swiftUIContentMode)

@@ -12,6 +12,9 @@ struct PhotoItem: Identifiable, Hashable {
     let pixelWidth: Int
     let pixelHeight: Int
     let isFavorite: Bool
+    /// Hidden in Photos. Carried on the item because every view that draws a
+    /// photograph has to know not to.
+    let isHidden: Bool
     let mediaSubtypes: PHAssetMediaSubtype
     /// Used by `EventSuggester` to split groups across a change of place.
     let location: CLLocation?
@@ -23,6 +26,7 @@ struct PhotoItem: Identifiable, Hashable {
         self.pixelWidth = asset.pixelWidth
         self.pixelHeight = asset.pixelHeight
         self.isFavorite = asset.isFavorite
+        self.isHidden = asset.isHidden
         self.mediaSubtypes = asset.mediaSubtypes
         self.location = asset.location
     }
@@ -106,6 +110,17 @@ final class PhotoLibraryService: NSObject, ObservableObject {
 
     // MARK: - Fetching
 
+    /// Whether to collect the Hidden album at all.
+    ///
+    /// On by default, which sounds bolder than it is: while Photos' own
+    /// authentication setting is on — its default — the album answers with
+    /// nothing whatever this says. And nothing here draws a hidden photograph;
+    /// they are carried so that an event made of them still knows what it
+    /// holds, and shown as a mark and a sentence instead.
+    static var includesHidden: Bool {
+        UserDefaults.standard.object(forKey: PreferenceKeys.includesHiddenPhotos) as? Bool ?? true
+    }
+
     /// The photographs in Photos' Hidden album, when it will say.
     private static func hiddenImages() -> [PHAsset] {
         let albums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum,
@@ -142,7 +157,7 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         //
         // Even that only answers while the owner has turned off the
         // authentication the Hidden album asks for, which is on by default.
-        let hidden = Debug.includesHidden ? Self.hiddenImages() : []
+        let hidden = Self.includesHidden ? Self.hiddenImages() : []
 
         // Snapshotting a large library blocks, so do it off the main actor and
         // hand back only the value types.
