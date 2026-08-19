@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var pendingLightroom: LightroomImport.Proposal?
     @State private var lightroomError: String?
     @State private var hasSurveyedCatalog = false
+    @State private var hasProbedHidden = false
     @State private var isGoingToDate = false
     @State private var targetDate = Date()
     @StateObject private var projection = LibraryProjection()
@@ -191,7 +192,14 @@ struct ContentView: View {
         // Debug only, and a report rather than an import: the library arrives
         // some seconds after launch, and the survey is worth nothing before it.
         .onChange(of: library.items.count) { _, count in
-            guard !hasSurveyedCatalog, count > 0, let catalog = Debug.lightroomCatalog else { return }
+            guard count > 0 else { return }
+            if !hasProbedHidden {
+                hasProbedHidden = true
+                if let id = Debug.resolveIdentifier { HiddenProbe.report(id) }
+                if let id = Debug.unhideIdentifier { HiddenProbe.unhide(id) }
+                if Debug.hidesNewest { HiddenProbe.hideNewest(in: library.items) }
+            }
+            guard !hasSurveyedCatalog, let catalog = Debug.lightroomCatalog else { return }
             hasSurveyedCatalog = true
             do {
                 _ = try LightroomImport.proposal(for: catalog, library: library.items, ratings: ratings)

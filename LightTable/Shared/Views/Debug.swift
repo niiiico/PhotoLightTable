@@ -25,6 +25,26 @@ enum Debug {
         isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_INCLUDE_HIDDEN"] == "1"
     }
 
+    /// Hide the newest photograph at launch and report what survives.
+    static var hidesNewest: Bool {
+        isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_HIDE_PROBE"] == "1"
+    }
+
+    /// An identifier to ask after at launch — the same question from a process
+    /// that never saw the photograph while it was visible.
+    static var resolveIdentifier: String? {
+        guard isEnabled, let id = ProcessInfo.processInfo.environment["LIGHTTABLE_RESOLVE_ID"],
+              !id.isEmpty else { return nil }
+        return id
+    }
+
+    /// An identifier to unhide at launch, putting the experiment back.
+    static var unhideIdentifier: String? {
+        guard isEnabled, let id = ProcessInfo.processInfo.environment["LIGHTTABLE_UNHIDE_ID"],
+              !id.isEmpty else { return nil }
+        return id
+    }
+
     /// A Photos album to interrogate at launch.
     ///
     /// For the one question the ordinary fetch cannot answer: `PHAsset`'s own
