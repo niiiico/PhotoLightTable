@@ -143,6 +143,7 @@ enum LightroomImport {
                   "\n", stderr)
         }
 
+        let byName = Dictionary(events.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
@@ -153,10 +154,18 @@ enum LightroomImport {
             }
             // The collection's own order, kept: it is often the order the
             // photographs were arranged in, which is a judgement worth having.
-            let assetIDs = collection.photos.compactMap { outcome.matched[$0.localID] }
+            //
+            // Deduplicated, because several catalogue frames can be one
+            // photograph here — a raw and its JPEG, or a burst matched to the
+            // same asset — and an event that lists the same photograph twice
+            // counts it twice for ever after.
+            var seen = Set<String>()
+            let assetIDs = collection.photos
+                .compactMap { outcome.matched[$0.localID] }
+                .filter { seen.insert($0).inserted }
             // Matched by name, which is what a second run has to recognise:
             // the same collection in the same catalogue makes the same name.
-            let existing = events.first { $0.name == collection.fullName }
+            let existing = byName[collection.fullName]
             proposal.plans.append(Plan(id: collection.id,
                                        name: collection.fullName,
                                        isUpdate: existing != nil,
@@ -170,6 +179,13 @@ enum LightroomImport {
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
             if Debug.isEnabled {
+                if let plan = proposal.plans.last, plan.staleMembers > 0 {
+                    // Named before anything is replaced: "678 photographs would
+                    // be taken out" is a number to check, not to trust.
+                    fputs("[lightroom] would drop \(plan.staleMembers) from \(plan.name) "
+                          + "(event holds \(byName[plan.name]?.pinnedAssetIDs.count ?? 0), "
+                          + "catalogue now matches \(plan.assetIDs.count))\n", stderr)
+                }
                 log(collection, outcome, probe, names)
                 logStrays(collection, assetIDs: assetIDs, library: library)
             }
