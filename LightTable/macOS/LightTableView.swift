@@ -338,8 +338,10 @@ struct LightTableView: View {
         let lower = max(0, centre - window)
         let upper = min(items.count, centre + window)
         guard lower < upper else { return }
+        // Hidden photographs are left out of the window: decoding one ahead of
+        // time is still decoding it, and nothing is ever going to draw it.
         ThumbnailLoader.shared.updateCaching(
-            visible: Array(items[lower..<upper]),
+            visible: items[lower..<upper].filter { !$0.isHidden },
             size: CGSize(width: app.thumbnailSize, height: app.thumbnailSize),
             mode: ThumbnailFillMode(rawValue: fillModeRaw) ?? .fill)
     }

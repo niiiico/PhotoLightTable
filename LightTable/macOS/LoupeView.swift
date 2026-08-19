@@ -1498,6 +1498,7 @@ struct LoupeView: View {
         // describe the pre-edit asset — the refreshed one has to be taken from
         // the service directly.
         let refreshed = library.items.first { $0.id == current.id } ?? current
+        guard !refreshed.isHidden else { return }
         for await next in ThumbnailLoader.shared.fullImages(for: refreshed, maxDimension: 2400) {
             image = next
         }

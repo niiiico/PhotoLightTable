@@ -46,7 +46,19 @@ struct TouchLoupe: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if let image {
+            if current?.isHidden == true {
+                // Said here too: on touch there is no menu to explain it, and a
+                // black screen with nothing on it reads as a fault.
+                VStack(spacing: 12) {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 30, weight: .light))
+                    Text("Hidden in Photos")
+                        .font(.system(size: 15, weight: .medium))
+                    Text("Unhide it in Photos to see it here.")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(.white.opacity(0.5))
+            } else if let image {
                 Image(platformImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -223,6 +235,11 @@ struct TouchLoupe: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
+        guard !current.isHidden else {
+            image = nil
+            isLoading = false
+            return
+        }
         for await next in ThumbnailLoader.shared.fullImages(for: current, maxDimension: 2400) {
             image = next
         }

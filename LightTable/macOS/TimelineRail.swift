@@ -134,7 +134,11 @@ private struct ScrubPreview: View {
         VStack(spacing: 5) {
             ZStack {
                 RoundedRectangle(cornerRadius: 3).fill(surfaces.table)
-                if let image {
+                if item.isHidden {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(.white.opacity(0.35))
+                } else if let image {
                     Image(platformImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -155,6 +159,7 @@ private struct ScrubPreview: View {
         // Reloaded as the pointer crosses into another day; the loader caches,
         // so scrubbing back over ground already covered costs nothing.
         .task(id: item.id) {
+            guard !item.isHidden else { return }
             for await next in ThumbnailLoader.shared.thumbnails(
                 for: item, size: CGSize(width: side, height: side), mode: .fill) {
                 image = next

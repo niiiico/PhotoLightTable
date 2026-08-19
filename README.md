@@ -506,11 +506,13 @@ to the owner, not to this app. With it off, a 2006 shoot that had matched 0 of
 
 ### Carried, never shown
 
-Including them is on by default, because *nothing draws them*. A hidden
-photograph is a mark in the grid and in the strip — `eye.slash`, not a blur,
+Including them is on by default, because *nothing draws them* — the grid, the
+filmstrip, the timeline scrubber's callout, and both loupes. A hidden photograph
+is a mark — `eye.slash`, not a blur,
 because a blurred photograph is still the photograph and is often recognisable at
 thumbnail size — and its pixels are never requested, rather than fetched and
-covered. The loupe says what it is in words, and offers to unhide it, which
+covered — including in the prefetch window handed to PhotoKit, since decoding one
+ahead of time is still decoding it. The loupe says what it is in words, and offers to unhide it, which
 raises Photos' own confirmation: this app does not get to make that decision
 quietly.
 
