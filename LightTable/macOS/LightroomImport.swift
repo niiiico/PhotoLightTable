@@ -169,24 +169,31 @@ enum LightroomImport {
         // carry a hidden photograph at all is the question, and hunting for the
         // right title is a round trip that answers nothing.
         let all = wanted == "*"
-        let albums = PHAssetCollection.fetchAssetCollections(with: .album,
-                                                             subtype: .any,
-                                                             options: nil)
+        // Smart albums as well as ordinary ones. Apple's documentation is
+        // specific about this: "Hidden assets are only available in the hidden
+        // Smart Album or in user Smart Albums" — and a smart album is something
+        // a Mac user can make, with a rule. Scanning only regular albums, as
+        // this did, was looking in the one place the answer could not be.
+        var albums: [PHAssetCollection] = []
+        for type in [PHAssetCollectionType.album, .smartAlbum] {
+            PHAssetCollection.fetchAssetCollections(with: type, subtype: .any, options: nil)
+                .enumerateObjects { album, _, _ in albums.append(album) }
+        }
         let withHidden = PHFetchOptions()
         withHidden.includeHiddenAssets = true
 
         var scanned = 0
         var reported = 0
-        albums.enumerateObjects { album, _, _ in
+        for album in albums {
             let title = album.localizedTitle ?? "untitled"
-            guard all || title == wanted else { return }
+            guard all || title == wanted else { continue }
             scanned += 1
 
             let open = PHAsset.fetchAssets(in: album, options: withHidden)
             let plain = PHAsset.fetchAssets(in: album, options: nil)
             // Only albums where the two disagree, or where one was asked for by
             // name: everything else is an album of ordinary photographs.
-            guard !all || open.count != plain.count else { return }
+            guard !all || open.count != plain.count else { continue }
 
             var hidden = 0
             open.enumerateObjects { asset, _, _ in if asset.isHidden { hidden += 1 } }
