@@ -201,6 +201,9 @@ struct ContentView: View {
             if !hasProbedHidden {
                 hasProbedHidden = true
                 if let id = Debug.resolveIdentifier { HiddenProbe.report(id) }
+                HiddenProbe.report(prefixes: Debug.assetPrefixes, library: library.items)
+                if Debug.findsStrays { HiddenProbe.findStrays(in: library.items) }
+                HiddenProbe.hide(identifiers: Debug.hideIdentifiers)
                 if let id = Debug.unhideIdentifier { HiddenProbe.unhide(id) }
                 if Debug.hidesNewest { HiddenProbe.hideNewest(in: library.items) }
             }

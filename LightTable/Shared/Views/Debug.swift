@@ -15,6 +15,18 @@ import Foundation
 enum Debug {
     static let isEnabled = ProcessInfo.processInfo.environment["LIGHTTABLE_DEBUG"] == "1"
 
+    /// Identifiers, or the start of them, to report on at launch.
+    static var assetPrefixes: [String] {
+        guard isEnabled, let list = ProcessInfo.processInfo.environment["LIGHTTABLE_ASSETS"],
+              !list.isEmpty else { return [] }
+        return list.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// Look for photographs left visible on days that are otherwise hidden.
+    static var findsStrays: Bool {
+        isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_FIND_STRAYS"] == "1"
+    }
+
     /// Hide the newest photograph at launch and report what survives.
     static var hidesNewest: Bool {
         isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_HIDE_PROBE"] == "1"
@@ -26,6 +38,13 @@ enum Debug {
         guard isEnabled, let id = ProcessInfo.processInfo.environment["LIGHTTABLE_RESOLVE_ID"],
               !id.isEmpty else { return nil }
         return id
+    }
+
+    /// Identifiers to put back into the Hidden album at launch.
+    static var hideIdentifiers: [String] {
+        guard isEnabled, let list = ProcessInfo.processInfo.environment["LIGHTTABLE_HIDE_IDS"],
+              !list.isEmpty else { return [] }
+        return list.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
     }
 
     /// An identifier to unhide at launch, putting the experiment back.
