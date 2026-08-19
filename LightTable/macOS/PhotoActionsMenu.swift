@@ -1,4 +1,5 @@
 #if os(macOS)
+import Photos
 import SwiftUI
 
 /// Everything you can do to a photograph, wherever the photograph is.
@@ -114,6 +115,14 @@ struct PhotoActionsMenu: View {
         if ratings.isVariant(item.id) {
             Button("Remove This Version…", role: .destructive) { remove(item) }
                 .help(removalMessage(for: item))
+        }
+
+        // Only ever towards hiding. Revealing is this app's own switch, which
+        // changes nothing in Photos; putting a photograph back into the Hidden
+        // album is a change to the library, so Photos asks before it happens.
+        if targets.contains(where: { !isHidden($0) }) {
+            Button("Hide in Photos…") { hide(targets) }
+                .help("Moves them to Photos' Hidden album. Photos will ask you to confirm.")
         }
 
         Divider()
@@ -269,6 +278,30 @@ struct PhotoActionsMenu: View {
         “\(name)” goes to Recently Deleted in Photos, where it can be brought \
         back for 30 days. The photo it was made from is not touched.
         """
+    }
+
+    // MARK: - Hiding
+
+    private func isHidden(_ id: String) -> Bool {
+        items.first { $0.id == id }?.isHidden ?? false
+    }
+
+    private func hide(_ ids: [String]) {
+        let assets = photoItems(for: ids).filter { !$0.isHidden }.map(\.asset)
+        guard !assets.isEmpty else { return }
+        PHPhotoLibrary.shared().performChanges {
+            for asset in assets {
+                PHAssetChangeRequest(for: asset).isHidden = true
+            }
+        } completionHandler: { success, error in
+            Task { @MainActor in
+                if success {
+                    await library.reload()
+                } else if let error {
+                    onError(error.localizedDescription)
+                }
+            }
+        }
     }
 
     // MARK: - Adjustments

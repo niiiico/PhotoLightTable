@@ -99,7 +99,8 @@ enum LightroomImport {
             probeIdentifiers(library: library, ratings: ratings)
 
             let dated = library.compactMap(\.creationDate)
-            fputs("[lightroom] library: \(library.count) photographs" +
+            let hiddenHere = library.filter(\.isHidden).count
+            fputs("[lightroom] library: \(library.count) photographs, \(hiddenHere) of them hidden" +
                   (PhotoLibraryService.includesHidden ? " (hidden included)" : "") +
                   (dated.min().map { ", \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
                   (dated.max().map { " to \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
@@ -122,7 +123,10 @@ enum LightroomImport {
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
-            if Debug.isEnabled { log(collection, outcome, probe, names) }
+            if Debug.isEnabled {
+                log(collection, outcome, probe, names)
+                logStrays(collection, assetIDs: assetIDs, library: library)
+            }
         }
         if Debug.isEnabled {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
@@ -139,6 +143,29 @@ enum LightroomImport {
     /// longer lists is exactly the case in question. If they come back by
     /// identifier and say they are hidden, the header's promise holds. If
     /// nothing comes back, hiding is a wall on both sides of the fetch.
+    /// Photographs that are visible in a collection where nearly all of them
+    /// are hidden.
+    ///
+    /// Which is what an accidental unhide looks like from the outside: a shoot
+    /// somebody hid, with two frames of it out in the open. Named rather than
+    /// counted, since the point is to be able to go and put them back.
+    private static func logStrays(_ collection: LightroomCatalog.Collection,
+                                  assetIDs: [String],
+                                  library: [PhotoItem]) {
+        let byID = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let members = assetIDs.compactMap { byID[$0] }
+        let hidden = members.filter(\.isHidden)
+        let visible = members.filter { !$0.isHidden }
+        guard !hidden.isEmpty, !visible.isEmpty,
+              hidden.count >= members.count * 9 / 10 else { return }
+
+        let listed = visible.prefix(6).map { item in
+            item.creationDate.map { $0.formatted(.iso8601.year().month().day()) } ?? item.id
+        }.joined(separator: ", ")
+        fputs("[lightroom] \(collection.fullName): \(visible.count) of \(members.count) "
+              + "are not hidden while the rest are — \(listed)\n", stderr)
+    }
+
     @MainActor
     private static func probeIdentifiers(library: [PhotoItem], ratings: RatingStore) {
         let visible = Set(library.map(\.id))

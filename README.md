@@ -514,6 +514,12 @@ thumbnail size — and its pixels are never requested, rather than fetched and
 covered — including in the prefetch window handed to PhotoKit, since decoding one
 ahead of time is still decoding it. The loupe says what it is in words.
 
+The only thing this app can change about hiding is **Hide in Photos…**, in the
+right-click menu, which puts a photograph *into* the Hidden album with Photos'
+own confirmation. One direction only: revealing is this app's own switch and
+changes nothing in the library, while hiding something is a change the system
+should be asked about.
+
 Revealing them is a **toolbar switch**, and it reveals them *here* — nothing in
 Photos changes, because a standing decision about a library should not be undone
 by a button in a picture viewer. It asks first, it is off at every launch, and it
