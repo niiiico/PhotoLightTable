@@ -486,6 +486,18 @@ one: each ordinary collection becomes an event holding exactly the photographs
 that were found. Smart collections are left out — a saved question is not a list
 of photographs. Collection sets become the event's name (`Trips / 2011 japan`).
 
+**Run it as often as you like.** That is the expected use, not a hazard to guard
+against: photographs arrive in the library in batches, and each run finds more of
+what a collection was always talking about. An event of the same name is added to
+rather than duplicated, membership is a union — what the event already held keeps
+its place, what the run found is appended — and a run that finds nothing new
+writes nothing at all. Nothing is ever removed from an event by an import: a
+photograph that stopped matching has usually not left the library, and an event
+is somebody's list.
+
+The proposal says which is which before you commit: *"12 collections … 40 of them
+already exist and would gain 118 photographs."*
+
 Read from a **copy**. Lightroom keeps the catalogue open with a write-ahead log
 beside it, often hundreds of megabytes; opening the original read-only either
 misses everything in that log or wants to write shared memory into someone

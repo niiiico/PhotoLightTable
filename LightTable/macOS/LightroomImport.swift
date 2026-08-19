@@ -17,6 +17,10 @@ enum LightroomImport {
     struct Plan: Identifiable {
         var id: Int64
         var name: String
+        /// An event of this name already exists, so this run adds to it.
+        var isUpdate = false
+        /// How many of the matched photographs it does not already hold.
+        var newMembers = 0
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -34,6 +38,8 @@ enum LightroomImport {
         var empty: [String] = []
 
         var isEmpty: Bool { plans.isEmpty }
+        var updates: [Plan] { plans.filter(\.isUpdate) }
+        var fresh: [Plan] { plans.filter { !$0.isUpdate } }
         var photoCount: Int { plans.reduce(0) { $0 + $1.assetIDs.count } }
         var missingCount: Int { plans.reduce(0) { $0 + $1.missing } }
 
@@ -42,7 +48,14 @@ enum LightroomImport {
             guard !isEmpty else {
                 return "None of the photographs in that catalogue are in this library."
             }
-            return summary + """
+            var text = summary
+            if !updates.isEmpty {
+                let added = updates.reduce(0) { $0 + $1.newMembers }
+                text += " \(updates.count) of them already exist and would gain "
+                text += added == 0 ? "nothing new" : "\(added) photograph\(added == 1 ? "" : "s")"
+                text += "."
+            }
+            return text + """
 
 
                 Each collection becomes an event holding exactly the photographs                 that were found. Nothing in Photos is changed.
@@ -64,7 +77,8 @@ enum LightroomImport {
     @MainActor
     static func proposal(for catalog: URL,
                          library: [PhotoItem],
-                         ratings: RatingStore) throws -> Proposal {
+                         ratings: RatingStore,
+                         events: [LightTableEvent] = []) throws -> Proposal {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
         let probe = Debug.isEnabled ? NearestPhoto(library) : nil
@@ -118,8 +132,15 @@ enum LightroomImport {
             // The collection's own order, kept: it is often the order the
             // photographs were arranged in, which is a judgement worth having.
             let assetIDs = collection.photos.compactMap { outcome.matched[$0.localID] }
+            // Matched by name, which is what a second run has to recognise:
+            // the same collection in the same catalogue makes the same name.
+            let existing = events.first { $0.name == collection.fullName }
             proposal.plans.append(Plan(id: collection.id,
                                        name: collection.fullName,
+                                       isUpdate: existing != nil,
+                                       newMembers: EventMerge.adds(
+                                           existing: existing?.pinnedAssetIDs ?? [],
+                                           incoming: assetIDs),
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
@@ -420,25 +441,47 @@ enum LightroomImport {
     ///
     /// Fixed membership, because that is what a collection is: a list somebody
     /// made by hand, not everything that happens to fall between two dates.
+    /// Makes an event per plan, or adds to the one already there.
+    ///
+    /// Runnable as often as you like, which is the point: photographs arrive in
+    /// the library in batches, and each run finds more of what a collection was
+    /// always talking about. An event of the same name is added to rather than
+    /// duplicated, and a run that finds nothing new writes nothing.
     @discardableResult
     static func apply(_ proposal: Proposal,
                       library: [PhotoItem],
+                      events: [LightTableEvent],
                       context: ModelContext) -> Int {
         let dateByID = Dictionary(library.compactMap { item in
             item.creationDate.map { (item.id, $0) }
         }, uniquingKeysWith: { first, _ in first })
+        let byName = Dictionary(events.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 
+        var touched = 0
         for plan in proposal.plans {
+            if let event = byName[plan.name] {
+                let merged = EventMerge.merged(existing: event.pinnedAssetIDs,
+                                               incoming: plan.assetIDs)
+                guard merged.count != event.pinnedAssetIDs.count else { continue }
+                event.pinnedAssetIDs = merged
+                event.excludedAssetIDs.removeAll { merged.contains($0) }
+                let dates = merged.compactMap { dateByID[$0] }
+                if let first = dates.min() { event.startDate = first }
+                if let last = dates.max() { event.endDate = last }
+                touched += 1
+                continue
+            }
+
             let dates = plan.assetIDs.compactMap { dateByID[$0] }
-            let event = LightTableEvent(name: plan.name,
-                                        startDate: dates.min() ?? .now,
-                                        endDate: dates.max() ?? .now,
-                                        pinnedAssetIDs: plan.assetIDs,
-                                        explicitMembership: true)
-            context.insert(event)
+            context.insert(LightTableEvent(name: plan.name,
+                                           startDate: dates.min() ?? .now,
+                                           endDate: dates.max() ?? .now,
+                                           pinnedAssetIDs: plan.assetIDs,
+                                           explicitMembership: true))
+            touched += 1
         }
         try? context.save()
-        return proposal.plans.count
+        return touched
     }
 }
 #endif

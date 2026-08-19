@@ -45,7 +45,8 @@ struct ContentView: View {
             proposal: $pendingLightroom,
             error: $lightroomError,
             onImport: { proposal in
-                LightroomImport.apply(proposal, library: library.items, context: context)
+                LightroomImport.apply(proposal, library: library.items,
+                                      events: events, context: context)
                 scheduleEventAlbumSync()
             },
             onChoose: chooseLightroomCatalog))
@@ -210,7 +211,8 @@ struct ContentView: View {
             guard !hasSurveyedCatalog, let catalog = Debug.lightroomCatalog else { return }
             hasSurveyedCatalog = true
             do {
-                _ = try LightroomImport.proposal(for: catalog, library: library.items, ratings: ratings)
+                _ = try LightroomImport.proposal(for: catalog, library: library.items,
+                                                 ratings: ratings, events: events)
             } catch {
                 fputs("[lightroom] \(error.localizedDescription)\n", stderr)
             }
@@ -294,7 +296,8 @@ struct ContentView: View {
         do {
             pendingLightroom = try LightroomImport.proposal(for: url,
                                                             library: library.items,
-                                                            ratings: ratings)
+                                                            ratings: ratings,
+                                                            events: events)
         } catch {
             lightroomError = error.localizedDescription
         }
