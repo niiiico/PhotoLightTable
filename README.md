@@ -498,6 +498,15 @@ is somebody's list.
 The proposal says which is which before you commit: *"12 collections … 40 of them
 already exist and would gain 118 photographs."*
 
+When a collection has been **corrected** in Lightroom — photographs taken out of
+it, not just added — adding is not enough, and the proposal counts those too:
+*"753 photographs are in an event but no longer in its collection."* A second
+button, **Replace Membership**, makes the events exactly what the catalogue says.
+It appears only when it would actually remove something, so the destructive
+choice is absent rather than idle, and it is never the default: while photographs
+are still arriving in the library, a frame missing from a run is usually one that
+has not been imported yet.
+
 Read from a **copy**. Lightroom keeps the catalogue open with a write-ahead log
 beside it, often hundreds of megabytes; opening the original read-only either
 misses everything in that log or wants to write shared memory into someone

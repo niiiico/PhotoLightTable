@@ -44,9 +44,9 @@ struct ContentView: View {
         return Debug.time("window body") { window.modifier(LightroomImportAlerts(
             proposal: $pendingLightroom,
             error: $lightroomError,
-            onImport: { proposal in
+            onImport: { proposal, mode in
                 LightroomImport.apply(proposal, library: library.items,
-                                      events: events, context: context)
+                                      events: events, mode: mode, context: context)
                 scheduleEventAlbumSync()
             },
             onChoose: chooseLightroomCatalog))
@@ -586,7 +586,7 @@ private struct RevealHiddenAlert: ViewModifier {
 private struct LightroomImportAlerts: ViewModifier {
     @Binding var proposal: LightroomImport.Proposal?
     @Binding var error: String?
-    let onImport: (LightroomImport.Proposal) -> Void
+    let onImport: (LightroomImport.Proposal, LightroomImport.Mode) -> Void
     let onChoose: () -> Void
 
     func body(content: Content) -> some View {
@@ -601,9 +601,17 @@ private struct LightroomImportAlerts: ViewModifier {
                 if pending.isEmpty {
                     Button("OK", role: .cancel) { proposal = nil }
                 } else {
-                    Button("Create Events") {
-                        onImport(pending)
+                    Button("Create and Add") {
+                        onImport(pending, .merge)
                         proposal = nil
+                    }
+                    // Offered only when it would actually take something out,
+                    // so the destructive choice is absent rather than idle.
+                    if pending.stale > 0 {
+                        Button("Replace Membership", role: .destructive) {
+                            onImport(pending, .replace)
+                            proposal = nil
+                        }
                     }
                     Button("Cancel", role: .cancel) { proposal = nil }
                 }

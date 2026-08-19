@@ -14,6 +14,18 @@ import SwiftUI
 /// A collection that finds nothing is not an event worth making, and is dropped
 /// from the proposal rather than created empty.
 enum LightroomImport {
+    /// What a second run does to an event that already exists.
+    enum Mode {
+        /// Add what was found, remove nothing. The right default while
+        /// photographs are still arriving in the library: a frame missing from
+        /// this run is usually one that has not been imported yet.
+        case merge
+        /// Make the event exactly what the catalogue says. For a collection
+        /// corrected in Lightroom, where the whole point is that some
+        /// photographs should no longer be in it.
+        case replace
+    }
+
     struct Plan: Identifiable {
         var id: Int64
         var name: String
@@ -21,6 +33,9 @@ enum LightroomImport {
         var isUpdate = false
         /// How many of the matched photographs it does not already hold.
         var newMembers = 0
+        /// How many it holds that the catalogue no longer lists — a collection
+        /// corrected in Lightroom since the last run.
+        var staleMembers = 0
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -39,6 +54,8 @@ enum LightroomImport {
 
         var isEmpty: Bool { plans.isEmpty }
         var updates: [Plan] { plans.filter(\.isUpdate) }
+        /// Photographs held by events that the catalogue no longer lists.
+        var stale: Int { plans.reduce(0) { $0 + $1.staleMembers } }
         var fresh: [Plan] { plans.filter { !$0.isUpdate } }
         var photoCount: Int { plans.reduce(0) { $0 + $1.assetIDs.count } }
         var missingCount: Int { plans.reduce(0) { $0 + $1.missing } }
@@ -54,6 +71,11 @@ enum LightroomImport {
                 text += " \(updates.count) of them already exist and would gain "
                 text += added == 0 ? "nothing new" : "\(added) photograph\(added == 1 ? "" : "s")"
                 text += "."
+            }
+            if stale > 0 {
+                text += " \(stale) photograph\(stale == 1 ? " is" : "s are") in an event but no "
+                text += "longer in its collection — replacing membership would take "
+                text += stale == 1 ? "it out." : "them out."
             }
             return text + """
 
@@ -141,6 +163,9 @@ enum LightroomImport {
                                        newMembers: EventMerge.adds(
                                            existing: existing?.pinnedAssetIDs ?? [],
                                            incoming: assetIDs),
+                                       staleMembers: EventMerge.adds(
+                                           existing: assetIDs,
+                                           incoming: existing?.pinnedAssetIDs ?? []),
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        offset: outcome.offset))
@@ -451,6 +476,7 @@ enum LightroomImport {
     static func apply(_ proposal: Proposal,
                       library: [PhotoItem],
                       events: [LightTableEvent],
+                      mode: Mode = .merge,
                       context: ModelContext) -> Int {
         let dateByID = Dictionary(library.compactMap { item in
             item.creationDate.map { (item.id, $0) }
@@ -460,9 +486,10 @@ enum LightroomImport {
         var touched = 0
         for plan in proposal.plans {
             if let event = byName[plan.name] {
-                let merged = EventMerge.merged(existing: event.pinnedAssetIDs,
-                                               incoming: plan.assetIDs)
-                guard merged.count != event.pinnedAssetIDs.count else { continue }
+                let merged = mode == .replace
+                    ? plan.assetIDs
+                    : EventMerge.merged(existing: event.pinnedAssetIDs, incoming: plan.assetIDs)
+                guard merged != event.pinnedAssetIDs else { continue }
                 event.pinnedAssetIDs = merged
                 event.excludedAssetIDs.removeAll { merged.contains($0) }
                 let dates = merged.compactMap { dateByID[$0] }
