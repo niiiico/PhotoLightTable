@@ -120,7 +120,10 @@ struct ThumbnailCell: View, Equatable {
                 radius: isFocused ? 4 : 0)
         .animation(.easeOut(duration: 0.1), value: isActive)
         .contentShape(Rectangle())
-        .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)") {
+        // The covering is part of the key. Without it, revealing a hidden
+        // photograph leaves a cell that has already decided not to load one,
+        // waiting for an image nobody is going to ask for.
+        .task(id: "\(item.id)#\(fillModeRaw)#\(imageVersion)#\(isCovered)") {
             guard !isCovered else { return }
             // Referenced directly rather than held in a @StateObject: the
             // loader is shared, so wrapping it per cell made every thumbnail

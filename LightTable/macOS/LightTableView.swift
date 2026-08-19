@@ -129,6 +129,7 @@ struct LightTableView: View {
                     TimelineRail(ticks: timeline.ticks,
                                  position: scrollPosition,
                                  previewFor: { preview(atFraction: $0) },
+                                 revealsHidden: app.revealsHiddenPhotos,
                                  onLand: { land(at: $0, proxy: proxy) })
                 }
                 }

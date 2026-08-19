@@ -144,7 +144,7 @@ struct LoupeView: View {
         }
         .animation(.easeOut(duration: 0.12), value: currentPick)
         .onKeyPress(action: handleKey)
-        .task(id: current?.id) {
+        .task(id: "\(current?.id ?? "")#\(isCovered)") {
             zoomState.reset()
             await loadImage()
             // Editing stays on across photos, so a run of frames can be worked

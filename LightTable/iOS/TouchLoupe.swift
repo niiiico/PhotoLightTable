@@ -46,7 +46,7 @@ struct TouchLoupe: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if current?.isHidden == true {
+            if current?.isHidden == true && !app.revealsHiddenPhotos {
                 // Said here too: on touch there is no menu to explain it, and a
                 // black screen with nothing on it reads as a fault.
                 VStack(spacing: 12) {
@@ -78,7 +78,7 @@ struct TouchLoupe: View {
         .gesture(swipe)
         .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { showsChrome.toggle() } }
         .statusBarHidden()
-        .task(id: current?.id) { await load() }
+        .task(id: "\(current?.id ?? "")#\(app.revealsHiddenPhotos)") { await load() }
     }
 
     // MARK: - Swipe
@@ -235,7 +235,7 @@ struct TouchLoupe: View {
         guard let current else { return }
         isLoading = true
         defer { isLoading = false }
-        guard !current.isHidden else {
+        guard !(current.isHidden && !app.revealsHiddenPhotos) else {
             image = nil
             isLoading = false
             return

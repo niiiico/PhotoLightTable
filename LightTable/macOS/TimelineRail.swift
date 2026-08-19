@@ -33,6 +33,7 @@ struct TimelineRail: View {
     /// The first photograph of the day a fraction of the way down, for the
     /// callout under the pointer.
     let previewFor: (Double) -> (day: Date, item: PhotoItem)?
+    var revealsHidden: Bool = false
     /// On release: the grid moves and the focus lands, so the keyboard carries
     /// on from there.
     ///
@@ -66,7 +67,8 @@ struct TimelineRail: View {
                     .offset(y: position.fraction * height - 1)
 
                 if let pointer, let preview = previewFor(pointer) {
-                    ScrubPreview(day: preview.day, item: preview.item)
+                    ScrubPreview(day: preview.day, item: preview.item,
+                                 revealsHidden: revealsHidden)
                         .offset(x: -128, y: pointer * height - 34)
                 }
             }
@@ -124,6 +126,7 @@ struct TimelineRail: View {
 private struct ScrubPreview: View {
     let day: Date
     let item: PhotoItem
+    let revealsHidden: Bool
 
     @Environment(\.surfaces) private var surfaces
     @State private var image: PlatformImage?
@@ -134,7 +137,7 @@ private struct ScrubPreview: View {
         VStack(spacing: 5) {
             ZStack {
                 RoundedRectangle(cornerRadius: 3).fill(surfaces.table)
-                if item.isHidden {
+                if item.isHidden && !revealsHidden {
                     Image(systemName: "eye.slash")
                         .font(.system(size: 16, weight: .light))
                         .foregroundStyle(.white.opacity(0.35))
@@ -158,8 +161,8 @@ private struct ScrubPreview: View {
         .shadow(radius: 8, y: 2)
         // Reloaded as the pointer crosses into another day; the loader caches,
         // so scrubbing back over ground already covered costs nothing.
-        .task(id: item.id) {
-            guard !item.isHidden else { return }
+        .task(id: "\(item.id)#\(revealsHidden)") {
+            guard !(item.isHidden && !revealsHidden) else { return }
             for await next in ThumbnailLoader.shared.thumbnails(
                 for: item, size: CGSize(width: side, height: side), mode: .fill) {
                 image = next
