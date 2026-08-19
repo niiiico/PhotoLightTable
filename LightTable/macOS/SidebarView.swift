@@ -13,6 +13,16 @@ struct SidebarView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.surfaces) private var surfaces
     @StateObject private var counts = EventCountCache()
+    /// Which folders are open, remembered: a tree that forgets is a tree you
+    /// re-open every launch.
+    @AppStorage(PreferenceKeys.openEventFolders) private var openFolders = ""
+
+    private var expandedFolders: Binding<Set<String>> {
+        Binding(
+            get: { Set(openFolders.components(separatedBy: "\n").filter { !$0.isEmpty }) },
+            set: { openFolders = $0.sorted().joined(separator: "\n") }
+        )
+    }
 
     var body: some View {
         // Counting is a pass over the library per event, and this body runs on
@@ -38,10 +48,21 @@ struct SidebarView: View {
                     }
                     .padding(.vertical, 2)
                 } else {
-                    ForEach(sortedEvents) { event in
-                        eventRow(event)
-                            .badge(counts.count(of: event))
-                            .tag(LibrarySelection.event(event.persistentModelID))
+                    ForEach(EventTree.build(sortedEvents, name: \.name), id: \.path) { root in
+                        // The top node is the sidebar section itself, so its own
+                        // events and folders are laid out directly rather than
+                        // inside a disclosure of nothing.
+                        ForEach(root.items) { event in
+                            eventRow(event)
+                                .badge(counts.count(of: event))
+                                .tag(LibrarySelection.event(event.persistentModelID))
+                        }
+                        ForEach(root.children, id: \.path) { folder in
+                            EventFolderRow(folder: folder,
+                                           counts: counts,
+                                           expanded: expandedFolders,
+                                           row: { event in AnyView(eventRow(event)) })
+                        }
                     }
                 }
             } header: {
@@ -84,7 +105,7 @@ struct SidebarView: View {
                         .foregroundStyle(.secondary)
                         .help("Every photograph in this event is hidden in Photos")
                 }
-                Text(event.name)
+                Text(event.name.components(separatedBy: EventTree.separator).last ?? event.name)
             }
             Text(dateRangeText(event))
                 .font(.caption)
@@ -116,6 +137,54 @@ struct SidebarView: View {
         let start = event.startDate.formatted(.dateTime.day().month(.abbreviated).year())
         let end = event.endDate.formatted(.dateTime.day().month(.abbreviated).year())
         return start == end ? start : "\(start) – \(end)"
+    }
+}
+
+/// A folder of events, and whatever sits under it.
+///
+/// Recursive, because the tree is: a Lightroom catalogue nests sets three deep
+/// in places, and the row for an event at the bottom has to be the same row as
+/// one at the top — same badge, same lock, same menu.
+private struct EventFolderRow: View {
+    let folder: EventTree.Node<LightTableEvent>
+    @ObservedObject var counts: EventCountCache
+    @Binding var expanded: Set<String>
+    let row: (LightTableEvent) -> AnyView
+
+    var body: some View {
+        DisclosureGroup(isExpanded: isOpen) {
+            ForEach(folder.items) { event in
+                row(event)
+                    .badge(counts.count(of: event))
+                    .tag(LibrarySelection.event(event.persistentModelID))
+            }
+            ForEach(folder.children, id: \.path) { child in
+                EventFolderRow(folder: child, counts: counts, expanded: $expanded, row: row)
+            }
+        } label: {
+            Label(folder.name, systemImage: "folder")
+                .badge(photographs)
+        }
+    }
+
+    private var isOpen: Binding<Bool> {
+        Binding(
+            get: { expanded.contains(folder.path) },
+            set: { open in
+                if open { expanded.insert(folder.path) } else { expanded.remove(folder.path) }
+            }
+        )
+    }
+
+    /// Everything underneath, so a closed folder still says how much is in it.
+    private var photographs: Int {
+        folder.items.reduce(0) { $0 + counts.count(of: $1) }
+            + folder.children.reduce(0) { $0 + childCount($1) }
+    }
+
+    private func childCount(_ node: EventTree.Node<LightTableEvent>) -> Int {
+        node.items.reduce(0) { $0 + counts.count(of: $1) }
+            + node.children.reduce(0) { $0 + childCount($1) }
     }
 }
 

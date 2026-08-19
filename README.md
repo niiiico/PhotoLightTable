@@ -172,6 +172,23 @@ reconciles the difference into `LightTable — Picked` and `LightTable — Rejec
 adding and removing only what changed so unrelated edits made in Photos survive.
 Sync can be turned off entirely, or forced with ⌘⇧S.
 
+## Folders in the sidebar
+
+Events nest, and the tree is **read out of their names** rather than stored. An
+event imported from Lightroom is called `kotoko / Nude / square nude`, because
+that is where it sat in the catalogue — and fifty of those in a flat list is a
+wall of text with the useful part at the end of every line. The separator is
+already there, so `EventTree` splits on it: no migration, nothing to keep in
+step, and an event named by hand joins a folder simply by being called
+`Trips / Japan`.
+
+A row shows the last component; the folder shows the rest. Folders sort by name
+and come before events at each level — a folder is a place, and the eye looks for
+places first — while events keep the order they were given, newest first. A
+closed folder carries the count of everything underneath it, and which folders
+are open is remembered, because a tree that forgets is a tree you re-open every
+launch.
+
 ## Events
 
 An event holds photos one of two ways.
