@@ -132,35 +132,43 @@ enum LightroomImport {
     /// many the album vends with hidden photographs allowed, and how many of
     /// those say they are hidden.
     private static func probeAlbum() {
-        guard let name = Debug.probeAlbum else { return }
+        guard let wanted = Debug.probeAlbum else { return }
 
+        // "*" asks every album rather than one by name: whether an album can
+        // carry a hidden photograph at all is the question, and hunting for the
+        // right title is a round trip that answers nothing.
+        let all = wanted == "*"
         let albums = PHAssetCollection.fetchAssetCollections(with: .album,
                                                              subtype: .any,
                                                              options: nil)
-        var found: PHAssetCollection?
-        albums.enumerateObjects { album, _, stop in
-            if album.localizedTitle == name {
-                found = album
-                stop.pointee = true
-            }
-        }
-        guard let album = found else {
-            fputs("[lightroom] album \"\(name)\": not found\n", stderr)
-            return
-        }
+        let withHidden = PHFetchOptions()
+        withHidden.includeHiddenAssets = true
 
-        let options = PHFetchOptions()
-        options.includeHiddenAssets = true
-        let assets = PHAsset.fetchAssets(in: album, options: options)
-        var hidden = 0
-        var earliest: Date?
-        assets.enumerateObjects { asset, _, _ in
-            if asset.isHidden { hidden += 1 }
-            if let date = asset.creationDate, earliest == nil || date < earliest! { earliest = date }
+        var scanned = 0
+        var reported = 0
+        albums.enumerateObjects { album, _, _ in
+            let title = album.localizedTitle ?? "untitled"
+            guard all || title == wanted else { return }
+            scanned += 1
+
+            let open = PHAsset.fetchAssets(in: album, options: withHidden)
+            let plain = PHAsset.fetchAssets(in: album, options: nil)
+            // Only albums where the two disagree, or where one was asked for by
+            // name: everything else is an album of ordinary photographs.
+            guard !all || open.count != plain.count else { return }
+
+            var hidden = 0
+            open.enumerateObjects { asset, _, _ in if asset.isHidden { hidden += 1 } }
+            fputs("[lightroom] album \"\(title)\": \(open.count) with hidden allowed, "
+                  + "\(plain.count) without, \(hidden) say they are hidden\n", stderr)
+            reported += 1
         }
-        fputs("[lightroom] album \"\(name)\": \(assets.count) photographs, \(hidden) of them hidden" +
-              (earliest.map { ", from \($0.formatted(.iso8601.year().month().day()))" } ?? "") +
-              "\n", stderr)
+        if all {
+            fputs("[lightroom] albums scanned: \(scanned), "
+                  + "\(reported) vend anything a plain fetch does not\n", stderr)
+        } else if scanned == 0 {
+            fputs("[lightroom] album \"\(wanted)\": not found\n", stderr)
+        }
     }
 
     /// What a collection came to, in the terms that decide what to do next:
