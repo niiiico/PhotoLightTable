@@ -630,6 +630,18 @@ and noise reduction which is unipolar — there is no negative amount of noise t
 remove. The UI is generated from the `Adjustment` enum rather than repeating a
 slider per parameter, so adding one is a case, not a view.
 
+### Zooming while you paint
+
+The loupe has always zoomed; the editor refused to, because everything drawn in
+the photograph's space — the brush, the mask, the crop handles — stayed put while
+the photograph moved under it, which paints in the wrong place. They carry the
+same scale and offset now, so zooming in to place a stroke works, and the brush
+covers the same *image* area at any magnification.
+
+A drag belongs to whichever tool is in hand, so panning by drag stays off while
+one is; **scrolling pans** and **pinch zooms**, since neither is a drag, and `Z`,
+`+` and `-` now work with a mask selected instead of being ignored.
+
 ### Selecting a subject
 
 **Subject…** in the Add Mask menu puts the photo into a tap mode; tap the thing

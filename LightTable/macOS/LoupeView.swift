@@ -282,28 +282,37 @@ struct LoupeView: View {
                         crop: edit.recipe.crop,
                         imageAspect: displayed.size.height > 0
                             ? displayed.size.width / displayed.size.height : 1)
+                        .scaleEffect(zoomState.zoom)
+                        .offset(zoomState.pan)
                 }
             }
             .overlay {
                 if !isCropping, let displayed = edit.preview ?? image,
                    let selected = selectedMask {
+                    // Scaled and offset exactly as the image is: an overlay
+                    // that stays put while the photograph moves under it paints
+                    // in the wrong place, which is worse than not zooming.
                     let aspect = displayed.size.height > 0
                         ? displayed.size.width / displayed.size.height : 1
 
-                    if selected.kind == .brush {
-                        BrushOverlay(mask: maskBinding(selected.id),
-                                     imageAspect: aspect,
-                                     brushRadius: brushRadius,
-                                     isErasing: isErasing,
-                                     showsPaint: showsBrushPaint,
-                                     softness: selected.softness,
-                                     onStrokeBegan: {
-                                         brushHistory.beganStroke(on: selected.id)
-                                         showsBrushPaint = true
-                                     })
-                    } else {
-                        MaskOverlay(mask: maskBinding(selected.id), imageAspect: aspect)
+                    Group {
+                        if selected.kind == .brush {
+                            BrushOverlay(mask: maskBinding(selected.id),
+                                         imageAspect: aspect,
+                                         brushRadius: brushRadius,
+                                         isErasing: isErasing,
+                                         showsPaint: showsBrushPaint,
+                                         softness: selected.softness,
+                                         onStrokeBegan: {
+                                             brushHistory.beganStroke(on: selected.id)
+                                             showsBrushPaint = true
+                                         })
+                        } else {
+                            MaskOverlay(mask: maskBinding(selected.id), imageAspect: aspect)
+                        }
                     }
+                    .scaleEffect(zoomState.zoom)
+                    .offset(zoomState.pan)
                 }
             }
             .overlay {
@@ -315,11 +324,16 @@ struct LoupeView: View {
                     imageAspect: displayed.size.height > 0
                         ? displayed.size.width / displayed.size.height : 1,
                     aspect: cropAspect)
+                        .scaleEffect(zoomState.zoom)
+                        .offset(zoomState.pan)
                 }
             }
-            // Zoom and pan would fight the handles for the same drags.
+            // A drag belongs to whichever tool is in hand — the brush, the
+            // crop handles — so panning by drag is off while one is. Pinch is
+            // not a drag and stays: zooming in to place a stroke precisely is
+            // the reason any of this is here. Scrolling pans, as ever.
             .gesture(handlesAreActive ? nil : panGesture)
-            .simultaneousGesture(handlesAreActive ? nil : magnifyGesture)
+            .simultaneousGesture(magnifyGesture)
             .onTapGesture(count: 2) { if !handlesAreActive { zoomState.toggle() } }
         }
         .padding(14)
@@ -1609,7 +1623,8 @@ struct LoupeView: View {
             ratings.clear([focusID])
             return .handled
         case "z":
-            guard !handlesAreActive else { return .ignored }
+            // Allowed with a tool in hand now that everything drawn in the
+            // photograph's space moves with it.
             zoomState.toggle()
             return .handled
         case "+", "=":

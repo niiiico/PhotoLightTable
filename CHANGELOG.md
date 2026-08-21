@@ -1,5 +1,8 @@
 # Changelog
 
+2026-08-21 - Let the editor zoom: the brush, mask and crop overlays now carry the same scale and offset as the photograph, so painting while zoomed in lands where you put it. Pinch and scroll work with a tool in hand; Z, + and - no longer refuse.
+
+
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
