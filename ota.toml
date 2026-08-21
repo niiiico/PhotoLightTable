@@ -4,6 +4,10 @@ scheme = "LightTable"
 platforms = ["ios", "macos"]
 
 [macos]
-# Made once with: xcrun notarytool store-credentials notary
-# Without it Gatekeeper quarantines the download on any machine but this one.
-notarize_profile = "notary"
+# An App Store Connect key rather than the keychain profile that used to be
+# here: a profile cannot be read without an unlocked session, so a release run
+# over SSH stalls on a prompt nobody is there to answer. Without notarization of
+# some kind, Gatekeeper quarantines the download on any machine but this one.
+notarize_key = "~/.appstoreconnect/private_keys/AuthKey_MZ9827QBF2.p8"
+notarize_key_id = "MZ9827QBF2"
+notarize_issuer = "69a6de77-1e8b-47e3-e053-5b8c7c11a4d1"
