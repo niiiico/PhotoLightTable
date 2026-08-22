@@ -16,6 +16,9 @@ struct SidebarView: View {
     /// Which folders are open, remembered: a tree that forgets is a tree you
     /// re-open every launch.
     @AppStorage(PreferenceKeys.openEventFolders) private var openFolders = ""
+    /// The event waiting for a folder name.
+    @State private var foldering: LightTableEvent?
+    @State private var newFolderName = ""
 
     private var expandedFolders: Binding<Set<String>> {
         Binding(
@@ -81,6 +84,19 @@ struct SidebarView: View {
             }
 
         }
+        .alert("New folder", isPresented: Binding(get: { foldering != nil },
+                                                  set: { if !$0 { foldering = nil } })) {
+            TextField("Name", text: $newFolderName, prompt: Text("Trips"))
+            Button("Cancel", role: .cancel) { foldering = nil }
+            Button("Move") {
+                if let event = foldering, !newFolderName.isEmpty {
+                    move(event, to: newFolderName)
+                }
+                foldering = nil
+            }
+        } message: {
+            Text("Folders are made by putting something in them. A folder inside another is written with a slash: Places / Japan.")
+        }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         // Cut from the same neutral as the table rather than the system's
@@ -90,6 +106,34 @@ struct SidebarView: View {
         // resolve against it, whatever the appearance preference says.
         .background(surfaces.rail)
         .environment(\.colorScheme, .dark)
+    }
+
+    /// Every folder that exists, which is every path any event's name carries.
+    ///
+    /// There is no list of folders to keep: a folder exists because something
+    /// is in it, and stops existing when the last thing leaves. That is the
+    /// whole cost of deriving the tree from names rather than storing it.
+    private var folderPaths: [String] {
+        var paths: Set<String> = []
+        for event in events {
+            let components = event.name.components(separatedBy: EventTree.separator)
+            var path = ""
+            for folder in components.dropLast() where !folder.isEmpty {
+                path = path.isEmpty ? folder : path + EventTree.separator + folder
+                paths.insert(path)
+            }
+        }
+        return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Files an event under a folder, or takes it out of one.
+    private func move(_ event: LightTableEvent, to folder: String) {
+        let leaf = event.name.components(separatedBy: EventTree.separator).last ?? event.name
+        event.name = folder.isEmpty ? leaf : folder + EventTree.separator + leaf
+        try? context.save()
+        // A folder that has just been made should be open, or the event appears
+        // to have vanished.
+        if !folder.isEmpty { expandedFolders.wrappedValue.insert(folder) }
     }
 
     private var sortedEvents: [LightTableEvent] {
@@ -113,6 +157,20 @@ struct SidebarView: View {
         }
         .contextMenu {
             Button("Edit…") { editingEvent = event }
+            Menu("Move to Folder") {
+                if event.name.contains(EventTree.separator) {
+                    Button("Top Level") { move(event, to: "") }
+                    Divider()
+                }
+                ForEach(folderPaths, id: \.self) { path in
+                    Button(path) { move(event, to: path) }
+                }
+                if !folderPaths.isEmpty { Divider() }
+                Button("New Folder…") {
+                    newFolderName = ""
+                    foldering = event
+                }
+            }
             Toggle("Sync to Photos Albums", isOn: Binding(
                 get: { event.isSyncedToPhotos },
                 set: { newValue in

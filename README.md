@@ -182,6 +182,12 @@ already there, so `EventTree` splits on it: no migration, nothing to keep in
 step, and an event named by hand joins a folder simply by being called
 `Trips / Japan`.
 
+**Making one:** right-click an event ▸ *Move to Folder*, which lists the folders
+that exist and offers a new one — or simply name an event `Trips / Corsica`. A
+folder exists because something is in it and stops existing when the last thing
+leaves, which is the whole cost of deriving the tree from names rather than
+storing it. There are no empty folders to tidy up, and none to make in advance.
+
 A row shows the last component; the folder shows the rest. Folders sort by name
 and come before events at each level — a folder is a place, and the eye looks for
 places first — while events keep the order they were given, newest first. A

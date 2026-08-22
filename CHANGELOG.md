@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-22 - Make folders reachable: right-click an event to move it into one, or into a new one, rather than having to know that a slash in the name is what files it.
+
 2026-08-21 - Let the editor zoom: the brush, mask and crop overlays now carry the same scale and offset as the photograph, so painting while zoomed in lands where you put it. Pinch and scroll work with a tool in hand; Z, + and - no longer refuse. Released as 0.5.
 
 2026-08-19 - Reach the photographs Photos hides — only ever through the Hidden smart album, never through an ordinary fetch — and merge them into the library, behind a flag and behind the owner's own authentication setting. A 2006 shoot went from 0 of 113 to 113 of 113. Carry them without ever drawing them: a mark in the grid, a sentence and an unhide button in the loupe, and an event whose every photograph is hidden marked hidden in the sidebar. Revealing them is a toolbar switch that asks first and lasts only until the app closes, rather than unhiding anything in Photos. Add Hide in Photos… to the right-click menu, the one direction this app will change: a photograph can be put back into the Hidden album, never taken out of it. Make the Lightroom import re-runnable: an event of the same name is added to rather than duplicated, and the proposal says how many photographs each would gain — plus a Replace Membership button, offered only when a collection corrected in Lightroom means an event is holding photographs the catalogue no longer lists. Give the sidebar folders, read out of the event names rather than stored, so an imported catalogue reads as a tree instead of fifty long labels.

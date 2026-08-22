@@ -76,6 +76,7 @@ struct EventEditor: View {
 
             Form {
                 TextField("Name", text: $name, prompt: Text("Corsica"))
+                    .help("A name with a slash files the event in a folder: Trips / Corsica")
 
                 if !isEditing && hasSeeds {
                     membershipSection
