@@ -24,3 +24,6 @@ Packages/
 
 # Scratch: debug scripts and their renders, per the working convention
 tmp/
+
+# Stray SQLite files from ad-hoc queries run in the repo root
+*.sqlite
