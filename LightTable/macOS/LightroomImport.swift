@@ -49,9 +49,13 @@ enum LightroomImport {
         /// being renamed or moved here. Adopted rather than duplicated.
         var adopts: PersistentIdentifier?
 
+        /// The event would be renamed to follow its collection.
+        var renamesFrom: String?
+
         /// An update that would change nothing: the event already holds
-        /// everything the collection has that this library does.
-        var addsNothing: Bool { isUpdate && newMembers == 0 }
+        /// everything the collection has that this library does, and is called
+        /// what its collection is called.
+        var addsNothing: Bool { isUpdate && newMembers == 0 && renamesFrom == nil }
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -74,6 +78,9 @@ enum LightroomImport {
         /// Events that came from this catalogue and no longer have a
         /// collection in it — deleted in Lightroom since the last import.
         var vanished: [LightTableEvent] = []
+        /// Events holding exactly the same photographs as another, which is
+        /// what renaming a collection used to leave behind.
+        var duplicates: [LightTableEvent] = []
         /// Collections where nothing at all was found — worth showing, because
         /// dozens of them means the photographs were never imported rather than
         /// that the matching is broken.
@@ -100,9 +107,18 @@ enum LightroomImport {
                 text += added == 0 ? "nothing new" : "\(added) photograph\(added == 1 ? "" : "s")"
                 text += "."
             }
+            let renamed = plans.filter { $0.renamesFrom != nil }.count
+            if renamed > 0 {
+                text += " \(renamed) would be renamed to follow "
+                text += renamed == 1 ? "its collection." : "their collections."
+            }
             if adopted > 0 {
                 text += " \(adopted) event\(adopted == 1 ? " was" : "s were") recognised by what "
                 text += "they hold after being renamed here."
+            }
+            if !duplicates.isEmpty {
+                text += " \(duplicates.count) hold\(duplicates.count == 1 ? "s" : "") exactly what "
+                text += "another event holds."
             }
             if !vanished.isEmpty {
                 text += " \(vanished.count) event\(vanished.count == 1 ? "" : "s") came from this "
@@ -196,6 +212,9 @@ enum LightroomImport {
         let byPath = Dictionary(events.compactMap { event in
             event.lightroomPath.map { ($0, event) }
         }, uniquingKeysWith: { first, _ in first })
+        let byCollection = Dictionary(events.compactMap { event in
+            event.lightroomCollectionID.map { ($0, event) }
+        }, uniquingKeysWith: { first, _ in first })
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index, nameOf: nameOf)
@@ -220,10 +239,12 @@ enum LightroomImport {
                 .filter { seen.insert($0).inserted }
             // Matched by name, which is what a second run has to recognise:
             // the same collection in the same catalogue makes the same name.
-            // By path first, so an event renamed here still updates from the
-            // collection it stands for; by name for everything imported before
-            // provenance existed.
-            let existing = byPath[collection.fullName] ?? byName[collection.fullName]
+            // By identity first — a collection renamed in Lightroom is the same
+            // collection — then by the path it was imported under, then by name
+            // for everything imported before any of this existed.
+            let existing = byCollection[Int(collection.id)]
+                ?? byPath[collection.fullName]
+                ?? byName[collection.fullName]
             proposal.plans.append(Plan(id: collection.id,
                                        name: collection.fullName,
                                        isUpdate: existing != nil,
@@ -233,6 +254,12 @@ enum LightroomImport {
                                        staleMembers: EventMerge.adds(
                                            existing: assetIDs,
                                            incoming: existing?.pinnedAssetIDs ?? []),
+                                       renamesFrom: existing.flatMap { event in
+                                           let wanted = EventNaming.name(
+                                               for: (name: event.name, importedAs: event.lightroomPath),
+                                               collection: collection.fullName)
+                                           return wanted == event.name ? nil : event.name
+                                       },
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
                                        missingPaths: Self.sample(outcome.unmatched),
@@ -286,6 +313,13 @@ enum LightroomImport {
         proposal.vanished = EventSync.vanished(events.filter { !adoptedIDs.contains($0.persistentModelID) },
                                                origin: { $0.lightroomPath },
                                                catalogPaths: paths)
+        proposal.duplicates = EventDuplicates.redundant(
+            events,
+            members: { $0.pinnedAssetIDs },
+            isKnownToCatalogue: { $0.lightroomCollectionID != nil },
+            name: { $0.name },
+            catalogNames: paths)
+
         if Debug.isEnabled, !proposal.vanished.isEmpty {
             for event in proposal.vanished {
                 fputs("[lightroom] vanished: \(event.name) (was \(event.lightroomPath ?? "?"))\n",
@@ -610,21 +644,32 @@ enum LightroomImport {
 
         let byID = Dictionary(events.map { ($0.persistentModelID, $0) },
                               uniquingKeysWith: { first, _ in first })
+        let byCollection = Dictionary(events.compactMap { event in
+            event.lightroomCollectionID.map { ($0, event) }
+        }, uniquingKeysWith: { first, _ in first })
 
         var touched = 0
         for plan in proposal.plans {
-            if let event = plan.adopts.flatMap({ byID[$0] }) ?? byPath[plan.name] ?? byName[plan.name] {
+            if let event = plan.adopts.flatMap({ byID[$0] })
+                ?? byCollection[Int(plan.id)] ?? byPath[plan.name] ?? byName[plan.name] {
                 let merged = mode == .replace
                     ? plan.assetIDs
                     : EventMerge.merged(existing: event.pinnedAssetIDs, incoming: plan.assetIDs)
-                guard merged != event.pinnedAssetIDs else { continue }
-                event.pinnedAssetIDs = merged
-                event.excludedAssetIDs.removeAll { merged.contains($0) }
-                let dates = merged.compactMap { dateByID[$0] }
-                if let first = dates.min() { event.startDate = first }
-                if let last = dates.max() { event.endDate = last }
-                // Backfills provenance for events imported before it existed.
-                event.lightroomPath = plan.name
+                if merged != event.pinnedAssetIDs {
+                    event.pinnedAssetIDs = merged
+                    event.excludedAssetIDs.removeAll { merged.contains($0) }
+                    let dates = merged.compactMap { dateByID[$0] }
+                    if let first = dates.min() { event.startDate = first }
+                    if let last = dates.max() { event.endDate = last }
+                }
+                // The name follows the collection while nobody here has
+                // renamed the event; once they have, it is theirs.
+                event.name = EventNaming.name(
+                    for: (name: event.name, importedAs: event.lightroomPath),
+                    collection: plan.name)
+                // Provenance, backfilled for events imported before it existed.
+                event.lightroomCollectionID = Int(plan.id)
+                event.lightroomPath = event.name == plan.name ? plan.name : event.lightroomPath
                 touched += 1
                 continue
             }
@@ -636,17 +681,17 @@ enum LightroomImport {
                                         pinnedAssetIDs: plan.assetIDs,
                                         explicitMembership: true)
             event.lightroomPath = plan.name
+            event.lightroomCollectionID = Int(plan.id)
             context.insert(event)
             touched += 1
         }
-        // Matching the catalogue means matching what is not in it either. Only
-        // events that carry a path are ever removed, so nothing made here can
-        // be taken away by an import.
-        if mode == .replace {
-            for event in proposal.vanished {
-                context.delete(event)
-                touched += 1
-            }
+        // Whatever was asked for. These lists arrive already narrowed to what
+        // was ticked, so a box that was ticked is an instruction — and only
+        // events the catalogue knows ever reach them, so nothing made here can
+        // be removed by an import.
+        for event in proposal.duplicates + proposal.vanished {
+            context.delete(event)
+            touched += 1
         }
         try? context.save()
         return touched

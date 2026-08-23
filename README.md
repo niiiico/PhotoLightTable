@@ -532,6 +532,18 @@ thing to do with it was press Cancel.
 
 An import that only ever adds is not a synchronisation. Two things close that:
 
+**Identity.** An event made by an import records *which* collection it came
+from, by the identity the catalogue gives it rather than by its path — a path
+changes the moment somebody tidies up. So a collection renamed in Lightroom
+renames its event here instead of arriving as a stranger and being imported a
+second time.
+
+**Whose name it is.** The name the event was given at import is kept beside it.
+While the two agree, nobody here has touched it and the catalogue may rename it
+at will; the moment they differ — you renamed it, or moved it to a folder, which
+is a rename — the name is yours and no import overwrites it. One fact, both
+behaviours.
+
 **Provenance.** An event made by an import records the collection path it came
 from, so a later run can tell it from an event somebody made here — and *only*
 events carrying a path are ever removed. Nothing you made by hand can be taken
@@ -543,6 +555,13 @@ does not drift is what is in them, so an event holding the same photographs as a
 collection *is* that collection — `EventProvenance` pairs them when they overlap
 by three quarters **both ways round**. Both ways matters: a dozen picks from a
 four-hundred-frame shoot sit entirely inside that collection and are not it.
+
+**Copies.** Before identity existed, renaming a collection made a second event
+beside the first and left the old one behind — three copies of one shoot, in this
+library. `EventDuplicates` finds events holding *exactly* the same photographs as
+another and offers them for removal, keeping the one the catalogue still knows.
+Identical membership, not similar: two events that merely overlap may be somebody's
+selection from the other, and deleting that is not tidying up.
 
 With those, **Match Catalogue** means what it says: membership replaced, renamed
 events adopted rather than duplicated, and events whose collections have been

@@ -120,6 +120,14 @@ final class LightTableEvent {
     var photosAlbumID: String?
     var photosPickedAlbumID: String?
 
+    /// The Lightroom collection this event was imported from, by the identity
+    /// the catalogue gives it.
+    ///
+    /// A path changes the moment somebody tidies up; this does not. It is what
+    /// lets a collection renamed in Lightroom rename its event here rather than
+    /// arriving as a stranger and being imported a second time.
+    var lightroomCollectionID: Int?
+
     /// The Lightroom collection this event was imported from, by its path in
     /// the catalogue.
     ///
@@ -128,6 +136,9 @@ final class LightTableEvent {
     /// that a collection has been deleted rather than silently keeping its
     /// event for ever. Optional because events made by hand have no such
     /// origin, and because it arrived after the events that predate it.
+    /// Also the name the event was given at import, so the two together say
+    /// whether anybody has renamed it since: while they agree, the event is
+    /// still the catalogue's to name, and once they differ it is yours.
     var lightroomPath: String?
 
     init(name: String,

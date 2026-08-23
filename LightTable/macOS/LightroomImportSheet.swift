@@ -48,6 +48,7 @@ struct LightroomImportSheet: View {
                           note: "Events that stand for a collection and would take what it has gained.",
                           plans: proposal.updates.filter { $0.adopts == nil })
                     vanishedGroup
+                    duplicatesGroup
                     emptyGroup
                 }
                 .padding(20)
@@ -99,9 +100,18 @@ struct LightroomImportSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle(isOn: binding(for: plan.id)) {
                             HStack(spacing: 8) {
-                                Text(plan.name)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(plan.name)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    if let was = plan.renamesFrom {
+                                        Text("was \(was)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                }
                                 Spacer(minLength: 12)
                                 detailLabel(for: plan)
                             }
@@ -132,6 +142,42 @@ struct LightroomImportSheet: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(proposal.vanished) { event in
+                    Toggle(isOn: Binding(
+                        get: { removing.contains(event.persistentModelID) },
+                        set: { on in
+                            if on { removing.insert(event.persistentModelID) }
+                            else { removing.remove(event.persistentModelID) }
+                        }
+                    )) {
+                        HStack(spacing: 8) {
+                            Text(event.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 12)
+                            Text("\(event.pinnedAssetIDs.count) photographs")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+
+    /// Events that hold exactly what another event holds.
+    @ViewBuilder
+    private var duplicatesGroup: some View {
+        if !proposal.duplicates.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionTitle("Copies of another event", count: proposal.duplicates.count) {
+                    let ids = Set(proposal.duplicates.map(\.persistentModelID))
+                    if ids.isSubset(of: removing) { removing.subtract(ids) } else { removing.formUnion(ids) }
+                }
+                Text("Each holds exactly the same photographs as another event — what renaming a collection used to leave behind. Ticking one deletes the event; no photograph is touched.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(proposal.duplicates) { event in
                     Toggle(isOn: Binding(
                         get: { removing.contains(event.persistentModelID) },
                         set: { on in
@@ -305,6 +351,7 @@ struct LightroomImportSheet: View {
         var narrowed = proposal
         narrowed.plans = proposal.plans.filter { chosen.contains($0.id) }
         narrowed.vanished = proposal.vanished.filter { removing.contains($0.persistentModelID) }
+        narrowed.duplicates = proposal.duplicates.filter { removing.contains($0.persistentModelID) }
         return narrowed
     }
 
@@ -314,7 +361,8 @@ struct LightroomImportSheet: View {
         var parts: [String] = []
         if new > 0 { parts.append("create \(new)") }
         if updated > 0 { parts.append("update \(updated)") }
-        if !filtered.vanished.isEmpty { parts.append("delete \(filtered.vanished.count)") }
+        let deletions = filtered.vanished.count + filtered.duplicates.count
+        if deletions > 0 { parts.append("delete \(deletions)") }
         return parts.isEmpty ? "Nothing chosen" : parts.joined(separator: ", ").capitalizedFirst
     }
 
@@ -327,6 +375,7 @@ struct LightroomImportSheet: View {
 
     private func detail(for plan: LightroomImport.Plan) -> String {
         var parts: [String] = []
+        if plan.renamesFrom != nil { parts.append("renamed") }
         if plan.isUpdate {
             parts.append(plan.newMembers == 0 ? "nothing new" : "+\(plan.newMembers)")
             if plan.staleMembers > 0 { parts.append("−\(plan.staleMembers)") }
