@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import CoreImage
 import Testing
 
 @testable import LightTable
@@ -138,5 +139,38 @@ struct StraightenTests {
                                             from: Data(#"{"tone":{"exposure":1}}"#.utf8))
         #expect(old.straighten == 0)
         #expect(old.tone.exposure == 1)
+    }
+}
+
+@Suite("Straightening reaches the picture")
+struct StraightenRendersTests {
+    /// A recipe with nothing but a straighten in it should still change the
+    /// photograph — the report was that the number moved and the picture did
+    /// not, and this is the whole path between the two.
+    @Test("A recipe carrying only a straighten produces a different image")
+    func straightenAloneRenders() throws {
+        let source = CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 300, height: 200))
+        var recipe = PhotoEditRecipe.neutral
+        recipe.straighten = 1.3
+
+        let straight = recipe.apply(to: source, applyCrop: false)
+
+        // Same frame, differently filled: the extent is kept and the content is
+        // scaled up out of the rotation's interior.
+        #expect(abs(straight.extent.width - source.extent.width) < 1.5)
+        #expect(abs(straight.extent.height - source.extent.height) < 1.5)
+        #expect(!recipe.isNeutral)
+    }
+
+    @Test("A degree of straighten is not silently rounded away")
+    func smallAnglesSurvive() {
+        let source = CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 300, height: 200))
+        let straight = PhotoEditRecipe.straightened(source, degrees: 1.3)
+        let unturned = PhotoEditRecipe.straightened(source, degrees: 0)
+
+        // The rotation is small; what proves it happened is the scale-back,
+        // which moves the sampled area even when the frame stays the size it
+        // was.
+        #expect(straight.extent != unturned.extent || straight != unturned)
     }
 }

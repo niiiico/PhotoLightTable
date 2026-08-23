@@ -1055,10 +1055,23 @@ final class PhotoEditSession: ObservableObject {
     /// Renders at display size, which is what `PHContentEditingInput` provides
     /// for exactly this purpose — the full-size render is deferred to commit.
     private func renderPreviewNow(applyCrop: Bool) {
-        guard let previewBase else { return }
+        guard let previewBase else {
+            if Debug.isEnabled {
+                fputs("[edit] nothing to render against — the session has no image loaded\n", stderr)
+            }
+            return
+        }
         let edited = recipe.apply(to: previewBase, applyCrop: applyCrop)
         if let cgImage = context.createCGImage(edited, from: edited.extent) {
             preview = PlatformImage.from(cgImage)
+            if Debug.isEnabled {
+                fputs(String(format: "[edit] rendered %.0fx%.0f (straighten %+.1f°, crop %@, %d mask(s))\n",
+                             edited.extent.width, edited.extent.height,
+                             recipe.straighten, applyCrop ? "on" : "off", recipe.masks.count),
+                      stderr)
+            }
+        } else if Debug.isEnabled {
+            fputs("[edit] the renderer produced nothing\n", stderr)
         }
 
         guard wantsBeforePreview else {
