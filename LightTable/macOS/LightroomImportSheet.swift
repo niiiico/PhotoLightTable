@@ -46,6 +46,7 @@ struct LightroomImportSheet: View {
                           note: "Events that stand for a collection and would take what it has gained.",
                           plans: proposal.updates.filter { $0.adopts == nil })
                     vanishedGroup
+                    emptyGroup
                 }
                 .padding(20)
             }
@@ -57,7 +58,7 @@ struct LightroomImportSheet: View {
         .onAppear {
             guard !hasPrepared else { return }
             hasPrepared = true
-            chosen = Set(proposal.plans.map(\.id))
+            chosen = Set(proposal.plans.filter { !$0.addsNothing }.map(\.id))
         }
     }
 
@@ -87,7 +88,12 @@ struct LightroomImportSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                ForEach(plans) { plan in
+                // Rows that would change nothing sink to the bottom of their
+                // group and go quiet. They are still there — a collection that
+                // has stopped gaining is a fact worth being able to see — but
+                // they should not be the first thing read, and they start
+                // unticked because ticking them buys nothing.
+                ForEach(plans.sorted { !$0.addsNothing && $1.addsNothing }) { plan in
                     Toggle(isOn: binding(for: plan.id)) {
                         HStack(spacing: 8) {
                             Text(plan.name)
@@ -96,9 +102,9 @@ struct LightroomImportSheet: View {
                             Spacer(minLength: 12)
                             Text(detail(for: plan))
                                 .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
                                 .fixedSize()
                         }
+                        .foregroundStyle(plan.addsNothing ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                     }
                     .toggleStyle(.checkbox)
                 }
@@ -137,6 +143,39 @@ struct LightroomImportSheet: View {
                         }
                     }
                     .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+
+    /// Collections that cannot be imported yet, and how much of each is
+    /// waiting. Listed rather than left out: "why is this one not here?" is a
+    /// question the sheet should answer without anyone having to ask it.
+    @ViewBuilder
+    private var emptyGroup: some View {
+        if !proposal.empty.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("Nothing in the library yet").font(.system(size: 13, weight: .semibold))
+                    Text("\(proposal.empty.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Text("Their photographs are not in Photos, so there is nothing to make an event from. Import them and run this again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(proposal.empty) { collection in
+                    HStack(spacing: 8) {
+                        Text(collection.name).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 12)
+                        Text("\(collection.photographs) missing")
+                            .font(.caption.monospacedDigit())
+                            .fixedSize()
+                    }
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 21)
                 }
             }
         }
@@ -219,7 +258,7 @@ struct LightroomImportSheet: View {
         } else {
             parts.append("\(plan.assetIDs.count) photographs")
         }
-        if plan.missing > 0 { parts.append("\(plan.missing) not in the library") }
+        if plan.missing > 0 { parts.append("\(plan.missing) missing") }
         return parts.joined(separator: " · ")
     }
 }

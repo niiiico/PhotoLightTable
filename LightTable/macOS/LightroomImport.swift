@@ -26,6 +26,13 @@ enum LightroomImport {
         case replace
     }
 
+    /// A collection none of whose photographs are in the library yet.
+    struct Empty: Identifiable {
+        var id: Int64
+        var name: String
+        var photographs: Int
+    }
+
     struct Plan: Identifiable {
         var id: Int64
         var name: String
@@ -39,6 +46,10 @@ enum LightroomImport {
         /// An event recognised as this collection by what it holds, after
         /// being renamed or moved here. Adopted rather than duplicated.
         var adopts: PersistentIdentifier?
+
+        /// An update that would change nothing: the event already holds
+        /// everything the collection has that this library does.
+        var addsNothing: Bool { isUpdate && newMembers == 0 }
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -59,7 +70,7 @@ enum LightroomImport {
         /// Collections where nothing at all was found — worth showing, because
         /// dozens of them means the photographs were never imported rather than
         /// that the matching is broken.
-        var empty: [String] = []
+        var empty: [Empty] = []
 
         var isEmpty: Bool { plans.isEmpty }
         var updates: [Plan] { plans.filter(\.isUpdate) }
@@ -169,7 +180,9 @@ enum LightroomImport {
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
             guard outcome.count > 0 else {
-                proposal.empty.append(collection.fullName)
+                proposal.empty.append(Empty(id: collection.id,
+                                            name: collection.fullName,
+                                            photographs: collection.photos.count))
                 if Debug.isEnabled { log(collection, outcome, probe, names) }
                 continue
             }
