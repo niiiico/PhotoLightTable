@@ -144,6 +144,40 @@ enum HiddenProbe {
         fputs("[hidden] \(found) photograph(s) not hidden on days that otherwise are\n", stderr)
     }
 
+    /// Everything the library holds around a moment, in full.
+    ///
+    /// For the case the matcher gets wrong: a catalogue says a photograph was
+    /// taken at 15:16:51 and swears the library does not have it, and the
+    /// library plainly does. Whatever is at fault is visible in what sits on
+    /// that second — how many, what shape, and what they are called.
+    static func explain(_ moment: String, in library: [PhotoItem]) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        guard let date = formatter.date(from: String(moment.prefix(19))) else {
+            fputs("[explain] cannot read \(moment)\n", stderr)
+            return
+        }
+
+        let wanted = date.timeIntervalSince1970
+        let near = library.filter { item in
+            guard let taken = item.creationDate?.timeIntervalSince1970 else { return false }
+            return abs(taken - wanted) <= 3
+        }
+        fputs("[explain] \(moment): \(near.count) photograph(s) within three seconds\n", stderr)
+
+        for item in near.sorted(by: { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) }) {
+            let name = PHAssetResource.assetResources(for: item.asset)
+                .map(\.originalFilename)
+                .joined(separator: ", ")
+            let taken = item.creationDate.map { String(describing: $0) } ?? "?"
+            let offset = item.creationDate.map { $0.timeIntervalSince1970 - wanted } ?? 0
+            fputs("[explain]   \(taken) (\(String(format: "%+.2f", offset))s) "
+                  + "\(item.pixelWidth)x\(item.pixelHeight) hidden=\(item.isHidden) \(name)\n",
+                  stderr)
+        }
+    }
+
     /// Puts a list of photographs back into the Hidden album.
     ///
     /// One change request for all of them, so the system asks once rather than

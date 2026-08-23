@@ -616,6 +616,13 @@ What both ends agree on is **when the shutter opened**, to the second, which is
 a fine enough sieve that two frames from one camera cannot share one. Where
 several photographs do land on the same second, pixel dimensions break the tie —
 either way round, since rotation is metadata in a raw and pixels in an export.
+And where dimensions cannot — a raw and the JPEG written beside it, imported
+separately, are two assets of the same second and the same shape — the file name
+can, so the matcher asks PhotoKit what those particular assets are called. Only
+those: a resource lookup is a trip per asset, unthinkable across a library and
+nothing at all for the handful of frames that come down to a name. This was
+reporting one frame of twenty-two different shoots as missing.
+
 Anything still ambiguous is left unmatched: an event built from the wrong frames
 is worse than one that says it is missing some.
 

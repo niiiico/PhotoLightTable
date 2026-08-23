@@ -122,20 +122,32 @@ enum LightroomMatch {
     /// clear margin: half the frames of a collection shot across a timezone
     /// change would otherwise drag the whole set an hour sideways on the
     /// strength of one extra hit.
-    static func match(_ photos: [CatalogPhoto], in index: LibraryIndex) -> Outcome {
+    /// What a library photograph's file was called, when anything is prepared
+    /// to say.
+    ///
+    /// Injected rather than read here, so the rule stays exercisable without a
+    /// photo library — and so the cost is paid only where it is needed. Asking
+    /// PhotoKit for an asset's resources is a per-asset trip, far too slow
+    /// across a library and nothing at all for the handful of frames that come
+    /// down to a name.
+    typealias NameLookup = (any MatchablePhoto) -> String?
+
+    static func match(_ photos: [CatalogPhoto],
+                      in index: LibraryIndex,
+                      nameOf: NameLookup? = nil) -> Outcome {
         let dated = photos.filter { $0.captureTime != nil }
         guard !dated.isEmpty else {
             return Outcome(matched: [:], offset: 0, unmatched: photos)
         }
 
-        var best = matched(dated, in: index, offset: 0)
+        var best = matched(dated, in: index, offset: 0, nameOf: nameOf)
         var bestOffset: TimeInterval = 0
         // Comfortably more than a rounding difference, and far less than a
         // timezone: a shift has to explain most of the collection.
         let margin = max(2, dated.count / 10)
 
         for offset in offsets where offset != 0 {
-            let candidate = matched(dated, in: index, offset: offset)
+            let candidate = matched(dated, in: index, offset: offset, nameOf: nameOf)
             if candidate.matches.count > best.matches.count + margin {
                 best = candidate
                 bestOffset = offset
@@ -156,7 +168,8 @@ enum LightroomMatch {
 
     private static func matched(_ photos: [CatalogPhoto],
                                 in index: LibraryIndex,
-                                offset: TimeInterval) -> Pass {
+                                offset: TimeInterval,
+                                nameOf: NameLookup?) -> Pass {
         var result = Pass()
 
         // Worked a second at a time rather than a frame at a time, because what
@@ -178,7 +191,8 @@ enum LightroomMatch {
                 // burst is never resolved out of its neighbours.
                 for frame in frames {
                     for neighbour in [second - 1, second + 1] {
-                        guard let chosen = choose(from: index.photos(at: neighbour), like: frame) else { continue }
+                        guard let chosen = choose(from: index.photos(at: neighbour),
+                                                  like: frame, nameOf: nameOf) else { continue }
                         result.matches[frame.localID] = chosen.id
                         break
                     }
@@ -213,7 +227,7 @@ enum LightroomMatch {
             for name in names {
                 let frames = groups[name] ?? []
                 guard let first = frames.first,
-                      let chosen = choose(from: candidates, like: first) else {
+                      let chosen = choose(from: candidates, like: first, nameOf: nameOf) else {
                     result.ambiguous += frames.count
                     continue
                 }
@@ -235,7 +249,8 @@ enum LightroomMatch {
     /// Ambiguity is left unmatched rather than guessed at: an event built from
     /// the wrong frames is worse than an event that says it is missing some.
     private static func choose(from candidates: [any MatchablePhoto],
-                               like photo: CatalogPhoto) -> (any MatchablePhoto)? {
+                               like photo: CatalogPhoto,
+                               nameOf: NameLookup?) -> (any MatchablePhoto)? {
         if candidates.count == 1 { return candidates[0] }
         guard candidates.count > 1 else { return nil }
 
@@ -245,6 +260,27 @@ enum LightroomMatch {
             ($0.pixelWidth == photo.pixelWidth && $0.pixelHeight == photo.pixelHeight)
                 || ($0.pixelWidth == photo.pixelHeight && $0.pixelHeight == photo.pixelWidth)
         }
-        return sameShape.count == 1 ? sameShape[0] : nil
+        if sameShape.count == 1 { return sameShape[0] }
+
+        // A raw and the JPEG written beside it are the same photograph, the
+        // same second and the same shape, and imported separately they are two
+        // assets here. Refusing to choose between them reported one frame of
+        // twenty-two different shoots as missing when it was plainly there.
+        // What tells them apart is the only thing left: what the file is called.
+        let remaining = sameShape.isEmpty ? candidates : sameShape
+        guard let nameOf else { return nil }
+
+        let wanted = photo.fileName.lowercased()
+        let stem = (photo.fileName as NSString).deletingPathExtension.lowercased()
+        var sameStem: [any MatchablePhoto] = []
+        for candidate in remaining {
+            guard let name = nameOf(candidate)?.lowercased() else { continue }
+            // The same file, extension and all: nothing more to weigh.
+            if name == wanted { return candidate }
+            if (name as NSString).deletingPathExtension == stem { sameStem.append(candidate) }
+        }
+        // Same photograph, different rendering of it — either will do, and the
+        // first is the one the library returned first.
+        return sameStem.first
     }
 }

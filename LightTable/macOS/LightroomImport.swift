@@ -139,6 +139,19 @@ enum LightroomImport {
                          events: [LightTableEvent] = []) throws -> Proposal {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
+        // Asked of PhotoKit one asset at a time, so it is answered only for the
+        // few frames that two library photographs both fit — a raw and its
+        // JPEG, imported separately. Remembered because a shoot shot that way
+        // asks about the same handful repeatedly.
+        var fileNames: [String: String?] = [:]
+        let nameOf: LightroomMatch.NameLookup = { photo in
+            if let known = fileNames[photo.id] { return known }
+            let name = (photo as? PhotoItem).flatMap {
+                PHAssetResource.assetResources(for: $0.asset).first?.originalFilename
+            }
+            fileNames[photo.id] = name
+            return name
+        }
         let probe = Debug.isEnabled ? NearestPhoto(library) : nil
         let names = Debug.isEnabled ? NameProbe(library) : nil
 
@@ -185,7 +198,7 @@ enum LightroomImport {
         }, uniquingKeysWith: { first, _ in first })
         var proposal = Proposal()
         for collection in collections {
-            let outcome = LightroomMatch.match(collection.photos, in: index)
+            let outcome = LightroomMatch.match(collection.photos, in: index, nameOf: nameOf)
             guard outcome.count > 0 else {
                 proposal.empty.append(Empty(id: collection.id,
                                             name: collection.fullName,

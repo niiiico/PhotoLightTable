@@ -218,3 +218,72 @@ struct LightroomMatchTests {
         #expect(outcome.count == 20)
     }
 }
+
+@Suite("A raw and its JPEG in the library")
+struct LightroomRawAndJpegTests {
+    /// Both assets, same second, same shape — the case that reported one frame
+    /// of twenty-two shoots missing when it was plainly there.
+    private func index() -> LightroomMatch.LibraryIndex {
+        LightroomMatch.LibraryIndex([
+            FakePhoto(id: "raw", creationDate: moment(0), pixelWidth: 2336, pixelHeight: 3504),
+            FakePhoto(id: "jpeg", creationDate: moment(0), pixelWidth: 2336, pixelHeight: 3504),
+        ])
+    }
+
+    private func names(_ photo: any MatchablePhoto) -> String? {
+        photo.id == "raw" ? "IMG_2484.CR2" : "IMG_2484.JPG"
+    }
+
+    @Test("The catalogue's raw finds the raw")
+    func rawWinsForRaw() {
+        let frame = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_2484.CR2",
+                                                captureTime: moment(0),
+                                                pixelWidth: 3504, pixelHeight: 2336)
+        let outcome = LightroomMatch.match([frame], in: index(), nameOf: names)
+
+        #expect(outcome.matched == [1: "raw"])
+    }
+
+    @Test("A catalogue JPEG finds the JPEG")
+    func jpegWinsForJpeg() {
+        let frame = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_2484.JPG",
+                                                captureTime: moment(0),
+                                                pixelWidth: 3504, pixelHeight: 2336)
+        let outcome = LightroomMatch.match([frame], in: index(), nameOf: names)
+
+        #expect(outcome.matched == [1: "jpeg"])
+    }
+
+    @Test("A different rendering of the same photograph will do")
+    func sameStemIsEnough() {
+        // The catalogue holds a TIFF nobody imported; the library has the raw
+        // and the JPEG of that frame. Either is that photograph.
+        let frame = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_2484.TIF",
+                                                captureTime: moment(0),
+                                                pixelWidth: 3504, pixelHeight: 2336)
+        let outcome = LightroomMatch.match([frame], in: index(), nameOf: names)
+
+        #expect(outcome.count == 1)
+    }
+
+    @Test("Two different photographs on one second are still refused")
+    func differentNamesStayAmbiguous() {
+        let frame = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_2484.CR2",
+                                                captureTime: moment(0),
+                                                pixelWidth: 3504, pixelHeight: 2336)
+        let outcome = LightroomMatch.match([frame], in: index()) { photo in
+            photo.id == "raw" ? "DSC_0001.NEF" : "DSC_0002.NEF"
+        }
+
+        #expect(outcome.matched.isEmpty)
+        #expect(outcome.ambiguous == 1)
+    }
+
+    @Test("With nothing able to say what things are called, it still refuses")
+    func withoutNames() {
+        let frame = LightroomMatch.CatalogPhoto(localID: 1, fileName: "IMG_2484.CR2",
+                                                captureTime: moment(0),
+                                                pixelWidth: 3504, pixelHeight: 2336)
+        #expect(LightroomMatch.match([frame], in: index()).matched.isEmpty)
+    }
+}

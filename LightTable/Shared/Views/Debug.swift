@@ -27,6 +27,13 @@ enum Debug {
         isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_FIND_STRAYS"] == "1"
     }
 
+    /// A capture time to explain: what the library holds around it.
+    static var explainMoment: String? {
+        guard isEnabled, let value = ProcessInfo.processInfo.environment["LIGHTTABLE_EXPLAIN"],
+              !value.isEmpty else { return nil }
+        return value
+    }
+
     /// Hide the newest photograph at launch and report what survives.
     static var hidesNewest: Bool {
         isEnabled && ProcessInfo.processInfo.environment["LIGHTTABLE_HIDE_PROBE"] == "1"

@@ -3,7 +3,7 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
-2026-08-23 - Make the Lightroom import a synchronisation rather than an accumulation: events record the collection they came from, an event renamed or moved here is recognised by what it holds instead of being duplicated, and Match Catalogue removes events whose collections have been deleted — never one made by hand. Replace the import's alert with a sheet: four groups, a checkbox on every line, and a footer that says what the ticked boxes add up to.
+2026-08-23 - Make the Lightroom import a synchronisation rather than an accumulation: events record the collection they came from, an event renamed or moved here is recognised by what it holds instead of being duplicated, and Match Catalogue removes events whose collections have been deleted — never one made by hand. Replace the import's alert with a sheet: four groups, a checkbox on every line, and a footer that says what the ticked boxes add up to, with the missing files listed by path. Fix the matcher refusing a raw and its JPEG: one frame of twenty-two shoots was reported missing while sitting in the library twice over.
 
 2026-08-22 - Make folders reachable: right-click an event to move it into one, or into a new one, rather than having to know that a slash in the name is what files it.
 
