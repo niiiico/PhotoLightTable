@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-24 - Let an iPad catch up with the Mac: Rebuild from Photos Albums and the sync switch are on touch now, so events and verdicts travel between devices through iCloud Photos rather than through anything of ours.
+
 2026-08-23 - Make the Lightroom import a synchronisation rather than an accumulation: events record the collection they came from, an event renamed or moved here is recognised by what it holds instead of being duplicated, and Match Catalogue removes events whose collections have been deleted — never one made by hand. Replace the import's alert with a sheet: four groups, a checkbox on every line, and a footer that says what the ticked boxes add up to, with the missing files listed by path. Fix the matcher refusing a raw and its JPEG: one frame of twenty-two shoots was reported missing while sitting in the library twice over.
 
 2026-08-23 - Follow Lightroom renames: an event records which collection it came from, takes its new name while nobody here has renamed it, and keeps yours the moment you do. Offer the duplicate events that renaming used to leave behind. Fix a raw and its JPEG being reported as a missing photograph, and stop Match Catalogue removing photographs the collection still holds — a frame the run could not place is not a frame the collection gave up. Keep albums made entirely of hidden photographs out of the sidebar until the eye is turned on. Fix an editor that moved its numbers and not the picture, when PhotoKit hands back an input with no display image. Released as 0.6.

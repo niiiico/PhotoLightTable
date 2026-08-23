@@ -962,6 +962,24 @@ the editor on both platforms, where the session's adjustments carry into both
 halves, and from the grid's context menu on the Mac, where there is no session
 to take a recipe from and the photo is split as it stands.
 
+## Two devices
+
+There is no sync of our own, and there does not need to be one. Events are
+mirrored into Photos as a folder of albums, verdicts into `LightTable — Picked`
+and `LightTable — Rejected`, edits into the asset itself as adjustment data, and
+a variant is a photograph like any other. iCloud Photos carries all of that
+between a Mac and an iPad by itself.
+
+So catching up is reading it back: **Rebuild from Photos Albums**, now on both
+platforms — the ⋯ menu on touch, the app menu on the Mac. It merges rather than
+replaces, so running it twice costs nothing and running it on the wrong device
+loses nothing. `Find Lost Versions` does the same job for variant families,
+which are also derivable from the library.
+
+What does not travel: colour labels, which nothing writes to Photos, and the
+scope memory and view preferences, which are properly local. Everything else
+arrives with the photographs.
+
 ## On iPhone and iPad
 
 The touch app is **a separate design, not a reflow of the Mac one**. The Mac app

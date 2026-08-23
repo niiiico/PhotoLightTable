@@ -11,6 +11,8 @@ struct TouchRootView: View {
     @EnvironmentObject private var library: PhotoLibraryService
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ratings: RatingStore
+    @EnvironmentObject private var syncer: AlbumSyncer
+    @State private var pendingImport: PhotosImport?
 
     @Query private var events: [LightTableEvent]
     @StateObject private var projection = LibraryProjection()
@@ -127,6 +129,21 @@ struct TouchRootView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
+        .alert("Rebuild from Photos albums?",
+               isPresented: Binding(get: { pendingImport != nil },
+                                    set: { if !$0 { pendingImport = nil } })) {
+            Button("Cancel", role: .cancel) { pendingImport = nil }
+            Button("Rebuild") {
+                if let pendingImport { ratings.applyImport(pendingImport) }
+                pendingImport = nil
+            }
+        } message: {
+            Text(pendingImport.map { found in
+                found.isEmpty
+                    ? "No LightTable albums were found in Photos."
+                    : "Found \(found.summary). This adds them to what's already here — nothing is removed."
+            } ?? "")
+        }
         .overlay(alignment: .bottomLeading) { BuildStamp() }
     }
 
@@ -167,6 +184,19 @@ struct TouchRootView: View {
                     }
                     Button("Clear Colour Filter") { app.colorFilter = [] }
                         .disabled(app.colorFilter.isEmpty)
+                }
+
+                Divider()
+
+                // The way an iPad catches up with a Mac. Events and verdicts
+                // are mirrored into Photos albums, iCloud Photos carries those
+                // between devices by itself, and this reads them back — which
+                // is the whole of syncing, without anything of ours in the
+                // middle to go wrong.
+                Toggle("Sync Picks to Photos Albums", isOn: $syncer.isEnabled)
+
+                Button("Rebuild from Photos Albums…", systemImage: "arrow.triangle.2.circlepath") {
+                    pendingImport = ratings.readImportFromPhotos()
                 }
             } label: {
                 Label("View", systemImage: "ellipsis.circle")
