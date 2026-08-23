@@ -67,14 +67,17 @@ enum LightroomCatalog {
         var photosByCollection: [Int64: [LightroomMatch.CatalogPhoto]] = [:]
         try each(db, """
             SELECT ci.collection, i.id_local, fi.idx_filename, i.captureTime,
-                   i.fileWidth, i.fileHeight
+                   i.fileWidth, i.fileHeight, r.absolutePath || f.pathFromRoot
             FROM AgLibraryCollectionImage ci
             JOIN Adobe_images i ON i.id_local = ci.image
             JOIN AgLibraryFile fi ON fi.id_local = i.rootFile
+            JOIN AgLibraryFolder f ON f.id_local = fi.folder
+            JOIN AgLibraryRootFolder r ON r.id_local = f.rootFolder
             """) { row in
             let photo = LightroomMatch.CatalogPhoto(
                 localID: row.int(1),
                 fileName: row.text(2) ?? "",
+                folder: row.text(6) ?? "",
                 captureTime: captureTime(row.text(3)),
                 pixelWidth: Int(row.int(4)),
                 pixelHeight: Int(row.int(5)))

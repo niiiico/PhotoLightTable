@@ -28,6 +28,8 @@ struct LightroomImportSheet: View {
     /// Whether an update also takes out what the collection no longer lists.
     @State private var replacesMembership = false
     @State private var hasPrepared = false
+    /// Rows showing which photographs they are missing.
+    @State private var unfolded: Set<Int64> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -94,19 +96,23 @@ struct LightroomImportSheet: View {
                 // they should not be the first thing read, and they start
                 // unticked because ticking them buys nothing.
                 ForEach(plans.sorted { !$0.addsNothing && $1.addsNothing }) { plan in
-                    Toggle(isOn: binding(for: plan.id)) {
-                        HStack(spacing: 8) {
-                            Text(plan.name)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: 12)
-                            Text(detail(for: plan))
-                                .font(.caption.monospacedDigit())
-                                .fixedSize()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(isOn: binding(for: plan.id)) {
+                            HStack(spacing: 8) {
+                                Text(plan.name)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 12)
+                                detailLabel(for: plan)
+                            }
+                            .foregroundStyle(plan.addsNothing ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                         }
-                        .foregroundStyle(plan.addsNothing ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                        .toggleStyle(.checkbox)
+
+                        if unfolded.contains(plan.id) {
+                            fileList(plan.missingPaths, total: plan.missing)
+                        }
                     }
-                    .toggleStyle(.checkbox)
                 }
             }
         }
@@ -167,18 +173,87 @@ struct LightroomImportSheet: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(proposal.empty) { collection in
-                    HStack(spacing: 8) {
-                        Text(collection.name).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 12)
-                        Text("\(collection.photographs) missing")
-                            .font(.caption.monospacedDigit())
-                            .fixedSize()
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(collection.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 12)
+                            Text("\(collection.photographs) missing")
+                                .font(.caption.monospacedDigit())
+                                .fixedSize()
+                            Button {
+                                if unfolded.contains(collection.id) { unfolded.remove(collection.id) }
+                                else { unfolded.insert(collection.id) }
+                            } label: {
+                                Image(systemName: unfolded.contains(collection.id)
+                                      ? "chevron.down" : "chevron.right")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .help(tooltip(collection.paths, total: collection.photographs))
+                        }
+                        .foregroundStyle(.tertiary)
+
+                        if unfolded.contains(collection.id) {
+                            fileList(collection.paths, total: collection.photographs)
+                        }
                     }
-                    .foregroundStyle(.tertiary)
                     .padding(.leading, 21)
                 }
             }
         }
+    }
+
+    /// The counts, with the missing one as a button: a number that can be
+    /// opened is more use than a number that cannot, and "which ones?" is the
+    /// question a missing count always raises.
+    @ViewBuilder
+    private func detailLabel(for plan: LightroomImport.Plan) -> some View {
+        HStack(spacing: 6) {
+            Text(detail(for: plan))
+                .font(.caption.monospacedDigit())
+                .fixedSize()
+
+            if plan.missing > 0 {
+                Button {
+                    if unfolded.contains(plan.id) { unfolded.remove(plan.id) }
+                    else { unfolded.insert(plan.id) }
+                } label: {
+                    Image(systemName: unfolded.contains(plan.id) ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .help(tooltip(plan.missingPaths, total: plan.missing))
+            }
+        }
+    }
+
+    /// Where the missing files were, so one can be gone and looked for.
+    @ViewBuilder
+    private func fileList(_ paths: [String], total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(paths, id: \.self) { path in
+                Text(path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .textSelection(.enabled)
+            }
+            if total > paths.count {
+                Text("… and \(total - paths.count) more")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.leading, 21)
+        .padding(.bottom, 4)
+    }
+
+    /// The first few, for reading without opening anything.
+    private func tooltip(_ paths: [String], total: Int) -> String {
+        var lines = Array(paths.prefix(10))
+        if total > lines.count { lines.append("… and \(total - lines.count) more") }
+        return lines.joined(separator: "\n")
     }
 
     private func sectionTitle(_ title: String, count: Int, toggleAll: @escaping () -> Void) -> some View {

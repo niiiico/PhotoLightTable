@@ -28,8 +28,14 @@ extension PhotoItem: MatchablePhoto {}
 enum LightroomMatch {
     /// What a catalogue knows about one photograph.
     struct CatalogPhoto: Equatable {
+        /// Where the file was, for saying which photograph is missing.
+        var path: String { folder.isEmpty ? fileName : folder + fileName }
+
         var localID: Int64
         var fileName: String
+        /// The folder the file sat in when the catalogue last saw it. Carried
+        /// only so a missing photograph can be gone and looked for.
+        var folder: String = ""
         /// The camera's own clock, with no timezone on it — which is exactly
         /// the problem `offsets` exists to solve.
         var captureTime: Date?

@@ -31,6 +31,8 @@ enum LightroomImport {
         var id: Int64
         var name: String
         var photographs: Int
+        /// Where the first of them are, for looking one up.
+        var paths: [String] = []
     }
 
     struct Plan: Identifiable {
@@ -53,6 +55,11 @@ enum LightroomImport {
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
+        /// Where the missing files were, as many as are worth carrying — enough
+        /// to recognise which photographs these are and go and find them,
+        /// without holding thirteen thousand strings for a collection nobody is
+        /// going to read to the end.
+        var missingPaths: [String] = []
         /// How far the camera's clock was from the library's idea of the time.
         var offset: TimeInterval
 
@@ -182,7 +189,8 @@ enum LightroomImport {
             guard outcome.count > 0 else {
                 proposal.empty.append(Empty(id: collection.id,
                                             name: collection.fullName,
-                                            photographs: collection.photos.count))
+                                            photographs: collection.photos.count,
+                                            paths: Self.sample(collection.photos)))
                 if Debug.isEnabled { log(collection, outcome, probe, names) }
                 continue
             }
@@ -214,6 +222,7 @@ enum LightroomImport {
                                            incoming: existing?.pinnedAssetIDs ?? []),
                                        assetIDs: assetIDs,
                                        missing: outcome.unmatched.count,
+                                       missingPaths: Self.sample(outcome.unmatched),
                                        offset: outcome.offset))
             if Debug.isEnabled {
                 if let plan = proposal.plans.last, plan.staleMembers > 0 {
@@ -559,6 +568,13 @@ enum LightroomImport {
     ///
     /// Fixed membership, because that is what a collection is: a list somebody
     /// made by hand, not everything that happens to fall between two dates.
+    /// The first few paths, in the catalogue's own order.
+    static let sampleSize = 40
+
+    private static func sample(_ photos: [LightroomMatch.CatalogPhoto]) -> [String] {
+        photos.prefix(sampleSize).map(\.path)
+    }
+
     /// Makes an event per plan, or adds to the one already there.
     ///
     /// Runnable as often as you like, which is the point: photographs arrive in
