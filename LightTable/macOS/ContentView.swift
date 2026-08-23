@@ -594,29 +594,18 @@ private struct LightroomImportAlerts: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .importLightroom)) { _ in
                 onChoose()
             }
-            .alert("Import Lightroom collections?",
-                   isPresented: Binding(get: { proposal != nil },
-                                        set: { if !$0 { proposal = nil } }),
-                   presenting: proposal) { pending in
-                if pending.isEmpty {
-                    Button("OK", role: .cancel) { proposal = nil }
-                } else {
-                    Button("Create and Add") {
-                        onImport(pending, .merge)
+            // A sheet rather than an alert: what an import would do is four
+            // different things to a hundred and fourteen collections, and an
+            // alert can only state totals — which are true, unarguable, and no
+            // help in deciding.
+            .sheet(isPresented: Binding(get: { proposal != nil },
+                                        set: { if !$0 { proposal = nil } })) {
+                if let pending = proposal {
+                    LightroomImportSheet(proposal: pending) { chosen, mode in
+                        onImport(chosen, mode)
                         proposal = nil
                     }
-                    // Offered only when it would actually take something out,
-                    // so the destructive choice is absent rather than idle.
-                    if pending.stale > 0 || !pending.vanished.isEmpty {
-                        Button("Match Catalogue", role: .destructive) {
-                            onImport(pending, .replace)
-                            proposal = nil
-                        }
-                    }
-                    Button("Cancel", role: .cancel) { proposal = nil }
                 }
-            } message: { pending in
-                Text(pending.message)
             }
         .alert("That catalogue could not be read",
                    isPresented: Binding(get: { error != nil },

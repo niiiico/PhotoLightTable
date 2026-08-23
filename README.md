@@ -518,8 +518,15 @@ writes nothing at all. Nothing is ever removed from an event by an import: a
 photograph that stopped matching has usually not left the library, and an event
 is somebody's list.
 
-The proposal says which is which before you commit: *"12 collections … 40 of them
-already exist and would gain 118 photographs."*
+The proposal is a sheet, in four groups, with a box in front of every line:
+**new events**, **recognised after renaming here**, **already imported**, and
+**collections no longer in the catalogue**. Each row says what it would cost —
+`+14`, `−3`, `28 not in the library` — and the footer says what the ticked boxes
+add up to: *"Create 3, update 40, delete 6."*
+
+It used to be an alert whose message had grown to four sentences of counts.
+Every number in it was true, none of them said *which*, and the only honest
+thing to do with it was press Cancel.
 
 ### Staying in step
 

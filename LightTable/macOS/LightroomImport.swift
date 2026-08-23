@@ -48,6 +48,9 @@ enum LightroomImport {
         var total: Int { assetIDs.count + missing }
     }
 
+    /// What an import would do. Handed to the sheet, which narrows it to what
+    /// was ticked and hands it back — so nothing below the sheet knows that any
+    /// choosing happened.
     struct Proposal {
         var plans: [Plan] = []
         /// Events that came from this catalogue and no longer have a
