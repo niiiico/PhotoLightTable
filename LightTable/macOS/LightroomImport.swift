@@ -42,9 +42,12 @@ enum LightroomImport {
         var isUpdate = false
         /// How many of the matched photographs it does not already hold.
         var newMembers = 0
+        /// Members the collection genuinely no longer has anything at — what a
+        /// replace would take out. Not merely what this run failed to match.
+        var removableMembers: [String] = []
         /// How many it holds that the catalogue no longer lists — a collection
         /// corrected in Lightroom since the last run.
-        var staleMembers = 0
+        var staleMembers: Int { removableMembers.count }
         /// An event recognised as this collection by what it holds, after
         /// being renamed or moved here. Adopted rather than duplicated.
         var adopts: PersistentIdentifier?
@@ -155,6 +158,11 @@ enum LightroomImport {
                          events: [LightTableEvent] = []) throws -> Proposal {
         let collections = try LightroomCatalog.collections(at: catalog)
         let index = LightroomMatch.LibraryIndex(library)
+        // When each photograph in the library was taken, to the second, for
+        // asking whether a collection still has anything at that moment.
+        let takenAt = Dictionary(library.compactMap { item in
+            item.creationDate.map { (item.id, Int($0.timeIntervalSince1970.rounded(.down))) }
+        }, uniquingKeysWith: { first, _ in first })
         // Asked of PhotoKit one asset at a time, so it is answered only for the
         // few frames that two library photographs both fit — a raw and its
         // JPEG, imported separately. Remembered because a shoot shot that way
@@ -251,9 +259,14 @@ enum LightroomImport {
                                        newMembers: EventMerge.adds(
                                            existing: existing?.pinnedAssetIDs ?? [],
                                            incoming: assetIDs),
-                                       staleMembers: EventMerge.adds(
-                                           existing: assetIDs,
-                                           incoming: existing?.pinnedAssetIDs ?? []),
+                                       removableMembers: existing.map { event in
+                                           EventSync.removable(
+                                               members: event.pinnedAssetIDs,
+                                               matched: Set(assetIDs),
+                                               collectionSeconds: Self.seconds(of: collection,
+                                                                               offset: outcome.offset),
+                                               secondOf: { takenAt[$0] })
+                                       } ?? [],
                                        renamesFrom: existing.flatMap { event in
                                            let wanted = EventNaming.name(
                                                for: (name: event.name, importedAs: event.lightroomPath),
@@ -264,6 +277,30 @@ enum LightroomImport {
                                        missing: outcome.unmatched.count,
                                        missingPaths: Self.sample(outcome.unmatched),
                                        offset: outcome.offset))
+            if Debug.isEnabled, let plan = proposal.plans.last, plan.staleMembers > 0,
+               let event = byCollection[Int(collection.id)] ?? byPath[plan.name] ?? byName[plan.name] {
+                // Which is it: a photograph the collection no longer lists, or
+                // one it still lists that simply did not match this time? The
+                // two want opposite treatment, and only the catalogue's own
+                // capture times can tell them apart.
+                let seconds = Set(collection.photos.compactMap { photo in
+                    photo.captureTime.map { Int(($0.timeIntervalSince1970 + outcome.offset).rounded(.down)) }
+                })
+                let matched = Set(plan.assetIDs)
+                let dropped = event.pinnedAssetIDs.filter { !matched.contains($0) }
+                let byIDLibrary = Dictionary(library.map { ($0.id, $0) },
+                                             uniquingKeysWith: { first, _ in first })
+                var stillInCollection = 0
+                for id in dropped {
+                    guard let taken = byIDLibrary[id]?.creationDate else { continue }
+                    if seconds.contains(Int(taken.timeIntervalSince1970.rounded(.down))) {
+                        stillInCollection += 1
+                    }
+                }
+                fputs("[lightroom] \(plan.name): \(dropped.count) would be dropped, "
+                      + "\(stillInCollection) of them are still in the collection "
+                      + "(it just did not match them)\n", stderr)
+            }
             if Debug.isEnabled {
                 if let plan = proposal.plans.last, plan.staleMembers > 0 {
                     // Named before anything is replaced: "678 photographs would
@@ -299,8 +336,12 @@ enum LightroomImport {
                 if let held = orphans.first(where: { $0.persistentModelID == event }) {
                     proposal.plans[index].newMembers = EventMerge.adds(
                         existing: held.pinnedAssetIDs, incoming: proposal.plans[index].assetIDs)
-                    proposal.plans[index].staleMembers = EventMerge.adds(
-                        existing: proposal.plans[index].assetIDs, incoming: held.pinnedAssetIDs)
+                    proposal.plans[index].removableMembers = EventSync.removable(
+                        members: held.pinnedAssetIDs,
+                        matched: Set(proposal.plans[index].assetIDs),
+                        collectionSeconds: Self.seconds(of: collections.first { $0.id == proposal.plans[index].id },
+                                                        offset: 0),
+                        secondOf: { takenAt[$0] })
                 }
             }
         }
@@ -615,6 +656,16 @@ enum LightroomImport {
     ///
     /// Fixed membership, because that is what a collection is: a list somebody
     /// made by hand, not everything that happens to fall between two dates.
+    /// The seconds a collection has photographs at, shifted by whatever the
+    /// camera's clock was out by.
+    private static func seconds(of collection: LightroomCatalog.Collection?,
+                                offset: TimeInterval) -> Set<Int> {
+        guard let collection else { return [] }
+        return Set(collection.photos.compactMap { photo in
+            photo.captureTime.map { Int(($0.timeIntervalSince1970 + offset).rounded(.down)) }
+        })
+    }
+
     /// The first few paths, in the catalogue's own order.
     static let sampleSize = 40
 
@@ -652,9 +703,10 @@ enum LightroomImport {
         for plan in proposal.plans {
             if let event = plan.adopts.flatMap({ byID[$0] })
                 ?? byCollection[Int(plan.id)] ?? byPath[plan.name] ?? byName[plan.name] {
-                let merged = mode == .replace
-                    ? plan.assetIDs
-                    : EventMerge.merged(existing: event.pinnedAssetIDs, incoming: plan.assetIDs)
+                let kept = mode == .replace
+                    ? event.pinnedAssetIDs.filter { !plan.removableMembers.contains($0) }
+                    : event.pinnedAssetIDs
+                let merged = EventMerge.merged(existing: kept, incoming: plan.assetIDs)
                 if merged != event.pinnedAssetIDs {
                     event.pinnedAssetIDs = merged
                     event.excludedAssetIDs.removeAll { merged.contains($0) }

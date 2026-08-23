@@ -44,3 +44,41 @@ struct EventSyncTests {
         #expect(vanished(events, []).count == 2)
     }
 }
+
+@Suite("What a replace should take out")
+struct EventRemovableTests {
+    private func seconds(_ values: [Int]) -> Set<Int> { Set(values) }
+
+    @Test("A photograph the collection no longer has at all")
+    func genuinelyGone() {
+        let gone = EventSync.removable(members: ["a"], matched: [],
+                                       collectionSeconds: seconds([100])) { _ in 500 }
+        #expect(gone == ["a"])
+    }
+
+    @Test("A photograph the run could not place is not a photograph given up")
+    func unmatchedButStillThere() {
+        // Two frames of the same shape on one second, a raw beside its JPEG, a
+        // frame hidden while the run was measuring: the matcher refuses, and
+        // refusing is not the same as the collection having dropped it.
+        let gone = EventSync.removable(members: ["a"], matched: [],
+                                       collectionSeconds: seconds([500])) { _ in 500 }
+        #expect(gone.isEmpty)
+    }
+
+    @Test("Matched members are never removable")
+    func matchedStays() {
+        let gone = EventSync.removable(members: ["a"], matched: ["a"],
+                                       collectionSeconds: []) { _ in 500 }
+        #expect(gone.isEmpty)
+    }
+
+    @Test("A member with no date at all cannot be vouched for")
+    func undated() {
+        // Nothing to compare against the collection, so it is treated as gone
+        // rather than kept for ever on the strength of an absence.
+        let gone = EventSync.removable(members: ["a"], matched: [],
+                                       collectionSeconds: seconds([500])) { _ in nil }
+        #expect(gone == ["a"])
+    }
+}

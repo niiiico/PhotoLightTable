@@ -567,6 +567,14 @@ With those, **Match Catalogue** means what it says: membership replaced, renamed
 events adopted rather than duplicated, and events whose collections have been
 deleted removed with them.
 
+**What replacing removes** is narrower than "everything this run did not
+match", and the difference matters: the matcher refuses whatever it cannot be
+sure of — two frames of the same shape on one second, a frame hidden while the
+run was measuring — and treating a refusal as a deletion would take photographs
+out of an event for being hard to identify. A member survives if the collection
+still holds *something taken at that moment*, whether or not this run could say
+which. Only a member the collection has nothing at all at is genuinely gone.
+
 When a collection has been **corrected** in Lightroom — photographs taken out of
 it, not just added — adding is not enough, and the proposal counts those too:
 *"753 photographs are in an event but no longer in its collection."* A second
