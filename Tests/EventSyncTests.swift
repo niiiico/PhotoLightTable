@@ -82,3 +82,32 @@ struct EventRemovableTests {
         #expect(gone == ["a"])
     }
 }
+
+@Suite("A row that would change something")
+struct ImportPlanTests {
+    private func plan(newMembers: Int = 0,
+                      removable: [String] = [],
+                      renamesFrom: String? = nil) -> LightroomImport.Plan {
+        LightroomImport.Plan(id: 1, name: "x", isUpdate: true, newMembers: newMembers,
+                            removableMembers: removable, renamesFrom: renamesFrom,
+                            assetIDs: [], missing: 0, offset: 0)
+    }
+
+    @Test("An event that would only lose photographs is not doing nothing")
+    func removalsCount() {
+        // The row was greyed and unticked, so ticking "also remove what the
+        // collection no longer lists" removed nothing: the rows it applied to
+        // were the ones not chosen.
+        #expect(!plan(removable: ["a"]).addsNothing)
+    }
+
+    @Test("An event that would only be renamed is not doing nothing")
+    func renameCounts() {
+        #expect(!plan(renamesFrom: "old / x").addsNothing)
+    }
+
+    @Test("Nothing gained, nothing lost, same name")
+    func genuinelyInert() {
+        #expect(plan().addsNothing)
+    }
+}

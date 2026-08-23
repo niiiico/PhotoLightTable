@@ -55,10 +55,15 @@ enum LightroomImport {
         /// The event would be renamed to follow its collection.
         var renamesFrom: String?
 
-        /// An update that would change nothing: the event already holds
-        /// everything the collection has that this library does, and is called
-        /// what its collection is called.
-        var addsNothing: Bool { isUpdate && newMembers == 0 && renamesFrom == nil }
+        /// An update that would change nothing whatever is asked for.
+        ///
+        /// Removals count. Leaving them out meant an event whose only change
+        /// was photographs leaving it was greyed and unticked — so ticking
+        /// "also remove what the collection no longer lists" removed nothing at
+        /// all, because the rows it applied to were the ones not chosen.
+        var addsNothing: Bool {
+            isUpdate && newMembers == 0 && renamesFrom == nil && removableMembers.isEmpty
+        }
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -708,6 +713,11 @@ enum LightroomImport {
                     : event.pinnedAssetIDs
                 let merged = EventMerge.merged(existing: kept, incoming: plan.assetIDs)
                 if merged != event.pinnedAssetIDs {
+                    if Debug.isEnabled {
+                        let removed = event.pinnedAssetIDs.count - kept.count
+                        fputs("[lightroom] \(event.name): \(event.pinnedAssetIDs.count) → "
+                              + "\(merged.count) photographs (\(removed) removed)\n", stderr)
+                    }
                     event.pinnedAssetIDs = merged
                     event.excludedAssetIDs.removeAll { merged.contains($0) }
                     let dates = merged.compactMap { dateByID[$0] }
@@ -741,6 +751,10 @@ enum LightroomImport {
         // was ticked, so a box that was ticked is an instruction — and only
         // events the catalogue knows ever reach them, so nothing made here can
         // be removed by an import.
+        if Debug.isEnabled {
+            fputs("[lightroom] applied: \(touched) event(s) changed, mode \(mode), "
+                  + "\(proposal.duplicates.count + proposal.vanished.count) to delete\n", stderr)
+        }
         for event in proposal.duplicates + proposal.vanished {
             context.delete(event)
             touched += 1
