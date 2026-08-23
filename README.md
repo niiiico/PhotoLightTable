@@ -625,8 +625,16 @@ is absent entirely when the library holds nothing hidden: a control that can onl
 ever do nothing is one more thing to read.
 
 They are carried so that an **event made of hidden photographs still knows what
-it holds**. An event whose every member is hidden is marked hidden in the
-sidebar. All, not any: an event of a hundred where one has been hidden is an
+it holds**. An event whose every member is hidden is left out of the sidebar
+entirely while the app is covering them, and comes back when the toolbar's eye is
+turned on: a row of `eye.slash` marks is no use, and the *name* of a private
+album is itself the thing being kept private — listing it says what is there
+while refusing to show it, which is the worst of both. Folders need no rule of
+their own; one holding nothing else has nothing left to hang on. If the album
+being browsed leaves the list, the grid goes back to All Photos rather than
+showing a scope with no row to return to.
+
+Marked hidden in the sidebar when shown. All, not any: an event of a hundred where one has been hidden is an
 ordinary event with one photograph missing from it, and locking a hundred on the
 strength of one would be a trap. Photos does not attempt this for its own albums,
 and for Photos that is right — album membership there is open-ended. Here it is

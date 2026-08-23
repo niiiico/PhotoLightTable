@@ -51,7 +51,7 @@ struct SidebarView: View {
                     }
                     .padding(.vertical, 2)
                 } else {
-                    ForEach(EventTree.build(sortedEvents, name: \.name), id: \.path) { root in
+                    ForEach(EventTree.build(listedEvents, name: \.name), id: \.path) { root in
                         // The top node is the sidebar section itself, so its own
                         // events and folders are laid out directly rather than
                         // inside a disclosure of nothing.
@@ -97,6 +97,14 @@ struct SidebarView: View {
         } message: {
             Text("Folders are made by putting something in them. A folder inside another is written with a slash: Places / Japan.")
         }
+        // Looking at an album that has just left the list would leave the grid
+        // showing a scope with no row to go back to.
+        .onChange(of: app.revealsHiddenPhotos) { _, revealed in
+            guard !revealed, case .event(let id) = app.selection,
+                  let event = events.first(where: { $0.persistentModelID == id }),
+                  counts.isHidden(event) else { return }
+            app.selection = .allPhotos
+        }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         // Cut from the same neutral as the table rather than the system's
@@ -138,6 +146,22 @@ struct SidebarView: View {
 
     private var sortedEvents: [LightTableEvent] {
         events.sorted { $0.startDate > $1.startDate }
+    }
+
+    /// The events the sidebar shows.
+    ///
+    /// An event every one of whose photographs Photos hides is left out while
+    /// this app is covering them: a row of eye.slash marks is no use, and the
+    /// name of a private album is itself the thing being kept private —
+    /// listing it says what is there while refusing to show it, which is the
+    /// worst of both. Turning the toolbar's eye on brings them back.
+    ///
+    /// Folders need no rule of their own: one holding nothing but such events
+    /// has nothing left to hang on, and a folder exists because something is
+    /// in it.
+    private var listedEvents: [LightTableEvent] {
+        guard !app.revealsHiddenPhotos else { return sortedEvents }
+        return sortedEvents.filter { !counts.isHidden($0) }
     }
 
     private func eventRow(_ event: LightTableEvent) -> some View {
