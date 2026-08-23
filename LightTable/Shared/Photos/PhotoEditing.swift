@@ -1003,8 +1003,11 @@ final class PhotoEditSession: ObservableObject {
         hasForeignEdit = item.asset.adjustmentsState != .none && loadedRecipe == .neutral
             && Self.decode(loaded.adjustmentData) == nil
 
-        if let display = loaded.displaySizeImage {
-            previewBase = CIImage.from(display)
+        previewBase = Self.previewBase(from: loaded)
+        if Debug.isEnabled {
+            fputs("[edit] opened \(item.id): display image "
+                  + "\(loaded.displaySizeImage == nil ? "absent" : "present"), "
+                  + "base \(previewBase == nil ? "none" : "ready")\n", stderr)
         }
         renderPreview()
         loadHistory(for: item)
@@ -1201,6 +1204,37 @@ final class PhotoEditSession: ObservableObject {
     /// This is what makes re-editing non-destructive: PhotoKit hands back the
     /// *original* image along with the previous recipe, instead of an image with
     /// the last edit already baked in. Returning false would compound edits.
+    /// What the editor draws on.
+    ///
+    /// `displaySizeImage` is the intended answer and PhotoKit does not always
+    /// give one — it came back empty for a photograph that opens perfectly well
+    /// otherwise, leaving the editor with the sliders moving and nothing to
+    /// move. The file it also hands over is a complete answer, so it is read
+    /// instead rather than the session sitting there looking broken.
+    ///
+    /// Scaled down on the way in: the point of the display-size image is that a
+    /// preview does not have to be rendered at capture resolution on every
+    /// frame of a drag.
+    static func previewBase(from input: PHContentEditingInput) -> CIImage? {
+        if let display = input.displaySizeImage {
+            return CIImage.from(display)
+        }
+        guard let url = input.fullSizeImageURL else { return nil }
+
+        let full = CIImage(contentsOf: url, options: [.applyOrientationProperty: true])
+            ?? CIRAWFilter(imageURL: url)?.outputImage
+        guard let full else { return nil }
+
+        let longest = max(full.extent.width, full.extent.height)
+        guard longest > previewLongEdge else { return full }
+        let scale = previewLongEdge / longest
+        return full.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    }
+
+    /// Big enough to judge an adjustment on, small enough to re-render while a
+    /// slider moves.
+    static let previewLongEdge: CGFloat = 2400
+
     static func inputOptions() -> PHContentEditingInputRequestOptions {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true
