@@ -36,6 +36,9 @@ enum LightroomImport {
         /// How many it holds that the catalogue no longer lists — a collection
         /// corrected in Lightroom since the last run.
         var staleMembers = 0
+        /// An event recognised as this collection by what it holds, after
+        /// being renamed or moved here. Adopted rather than duplicated.
+        var adopts: PersistentIdentifier?
         /// Photographs in the library, in the order the collection held them.
         var assetIDs: [String]
         var missing: Int
@@ -47,6 +50,9 @@ enum LightroomImport {
 
     struct Proposal {
         var plans: [Plan] = []
+        /// Events that came from this catalogue and no longer have a
+        /// collection in it — deleted in Lightroom since the last import.
+        var vanished: [LightTableEvent] = []
         /// Collections where nothing at all was found — worth showing, because
         /// dozens of them means the photographs were never imported rather than
         /// that the matching is broken.
@@ -54,6 +60,7 @@ enum LightroomImport {
 
         var isEmpty: Bool { plans.isEmpty }
         var updates: [Plan] { plans.filter(\.isUpdate) }
+        var adopted: Int { plans.filter { $0.adopts != nil }.count }
         /// Photographs held by events that the catalogue no longer lists.
         var stale: Int { plans.reduce(0) { $0 + $1.staleMembers } }
         var fresh: [Plan] { plans.filter { !$0.isUpdate } }
@@ -71,6 +78,14 @@ enum LightroomImport {
                 text += " \(updates.count) of them already exist and would gain "
                 text += added == 0 ? "nothing new" : "\(added) photograph\(added == 1 ? "" : "s")"
                 text += "."
+            }
+            if adopted > 0 {
+                text += " \(adopted) event\(adopted == 1 ? " was" : "s were") recognised by what "
+                text += "they hold after being renamed here."
+            }
+            if !vanished.isEmpty {
+                text += " \(vanished.count) event\(vanished.count == 1 ? "" : "s") came from this "
+                text += "catalogue and no longer have a collection in it."
             }
             if stale > 0 {
                 text += " \(stale) photograph\(stale == 1 ? " is" : "s are") in an event but no "
@@ -144,6 +159,9 @@ enum LightroomImport {
         }
 
         let byName = Dictionary(events.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let byPath = Dictionary(events.compactMap { event in
+            event.lightroomPath.map { ($0, event) }
+        }, uniquingKeysWith: { first, _ in first })
         var proposal = Proposal()
         for collection in collections {
             let outcome = LightroomMatch.match(collection.photos, in: index)
@@ -165,7 +183,10 @@ enum LightroomImport {
                 .filter { seen.insert($0).inserted }
             // Matched by name, which is what a second run has to recognise:
             // the same collection in the same catalogue makes the same name.
-            let existing = byName[collection.fullName]
+            // By path first, so an event renamed here still updates from the
+            // collection it stands for; by name for everything imported before
+            // provenance existed.
+            let existing = byPath[collection.fullName] ?? byName[collection.fullName]
             proposal.plans.append(Plan(id: collection.id,
                                        name: collection.fullName,
                                        isUpdate: existing != nil,
@@ -192,6 +213,46 @@ enum LightroomImport {
         }
         if Debug.isEnabled {
             fputs("[lightroom] \(proposal.summary)\n", stderr)
+        }
+        // Events that no collection matched by path or by name: a collection
+        // renamed in Lightroom, or an event moved into a folder here, leaves
+        // one of these behind, and making a second event beside it is the
+        // opposite of synchronising.
+        let claimed = Set(proposal.plans.compactMap { plan in
+            (byPath[plan.name] ?? byName[plan.name])?.persistentModelID
+        })
+        let orphans = events.filter { !claimed.contains($0.persistentModelID) }
+        if !orphans.isEmpty {
+            let adoptions = EventProvenance.adopt(
+                collections: proposal.plans.map { (id: $0.id, members: $0.assetIDs) },
+                candidates: orphans,
+                members: { $0.pinnedAssetIDs })
+            for index in proposal.plans.indices {
+                guard let event = adoptions[proposal.plans[index].id] else { continue }
+                proposal.plans[index].adopts = event
+                proposal.plans[index].isUpdate = true
+                if let held = orphans.first(where: { $0.persistentModelID == event }) {
+                    proposal.plans[index].newMembers = EventMerge.adds(
+                        existing: held.pinnedAssetIDs, incoming: proposal.plans[index].assetIDs)
+                    proposal.plans[index].staleMembers = EventMerge.adds(
+                        existing: proposal.plans[index].assetIDs, incoming: held.pinnedAssetIDs)
+                }
+            }
+        }
+
+        // Everything the catalogue holds now, so an event standing for a
+        // collection that has been deleted can be told from one whose
+        // photographs simply have not been imported yet.
+        let paths = Set(collections.map(\.fullName))
+        let adoptedIDs = Set(proposal.plans.compactMap(\.adopts))
+        proposal.vanished = EventSync.vanished(events.filter { !adoptedIDs.contains($0.persistentModelID) },
+                                               origin: { $0.lightroomPath },
+                                               catalogPaths: paths)
+        if Debug.isEnabled, !proposal.vanished.isEmpty {
+            for event in proposal.vanished {
+                fputs("[lightroom] vanished: \(event.name) (was \(event.lightroomPath ?? "?"))\n",
+                      stderr)
+            }
         }
         return proposal
     }
@@ -498,10 +559,16 @@ enum LightroomImport {
             item.creationDate.map { (item.id, $0) }
         }, uniquingKeysWith: { first, _ in first })
         let byName = Dictionary(events.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let byPath = Dictionary(events.compactMap { event in
+            event.lightroomPath.map { ($0, event) }
+        }, uniquingKeysWith: { first, _ in first })
+
+        let byID = Dictionary(events.map { ($0.persistentModelID, $0) },
+                              uniquingKeysWith: { first, _ in first })
 
         var touched = 0
         for plan in proposal.plans {
-            if let event = byName[plan.name] {
+            if let event = plan.adopts.flatMap({ byID[$0] }) ?? byPath[plan.name] ?? byName[plan.name] {
                 let merged = mode == .replace
                     ? plan.assetIDs
                     : EventMerge.merged(existing: event.pinnedAssetIDs, incoming: plan.assetIDs)
@@ -511,17 +578,30 @@ enum LightroomImport {
                 let dates = merged.compactMap { dateByID[$0] }
                 if let first = dates.min() { event.startDate = first }
                 if let last = dates.max() { event.endDate = last }
+                // Backfills provenance for events imported before it existed.
+                event.lightroomPath = plan.name
                 touched += 1
                 continue
             }
 
             let dates = plan.assetIDs.compactMap { dateByID[$0] }
-            context.insert(LightTableEvent(name: plan.name,
-                                           startDate: dates.min() ?? .now,
-                                           endDate: dates.max() ?? .now,
-                                           pinnedAssetIDs: plan.assetIDs,
-                                           explicitMembership: true))
+            let event = LightTableEvent(name: plan.name,
+                                        startDate: dates.min() ?? .now,
+                                        endDate: dates.max() ?? .now,
+                                        pinnedAssetIDs: plan.assetIDs,
+                                        explicitMembership: true)
+            event.lightroomPath = plan.name
+            context.insert(event)
             touched += 1
+        }
+        // Matching the catalogue means matching what is not in it either. Only
+        // events that carry a path are ever removed, so nothing made here can
+        // be taken away by an import.
+        if mode == .replace {
+            for event in proposal.vanished {
+                context.delete(event)
+                touched += 1
+            }
         }
         try? context.save()
         return touched

@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-23 - Make the Lightroom import a synchronisation rather than an accumulation: events record the collection they came from, an event renamed or moved here is recognised by what it holds instead of being duplicated, and Match Catalogue removes events whose collections have been deleted — never one made by hand.
+
 2026-08-22 - Make folders reachable: right-click an event to move it into one, or into a new one, rather than having to know that a slash in the name is what files it.
 
 2026-08-21 - Let the editor zoom: the brush, mask and crop overlays now carry the same scale and offset as the photograph, so painting while zoomed in lands where you put it. Pinch and scroll work with a tool in hand; Z, + and - no longer refuse. Released as 0.5.

@@ -521,6 +521,26 @@ is somebody's list.
 The proposal says which is which before you commit: *"12 collections … 40 of them
 already exist and would gain 118 photographs."*
 
+### Staying in step
+
+An import that only ever adds is not a synchronisation. Two things close that:
+
+**Provenance.** An event made by an import records the collection path it came
+from, so a later run can tell it from an event somebody made here — and *only*
+events carrying a path are ever removed. Nothing you made by hand can be taken
+away by an import, however much its name looks like a catalogue's.
+
+**Recognition.** Matching by name works right up until somebody tidies up: move
+an event into a folder here and it is renamed, while its collection is not. What
+does not drift is what is in them, so an event holding the same photographs as a
+collection *is* that collection — `EventProvenance` pairs them when they overlap
+by three quarters **both ways round**. Both ways matters: a dozen picks from a
+four-hundred-frame shoot sit entirely inside that collection and are not it.
+
+With those, **Match Catalogue** means what it says: membership replaced, renamed
+events adopted rather than duplicated, and events whose collections have been
+deleted removed with them.
+
 When a collection has been **corrected** in Lightroom — photographs taken out of
 it, not just added — adding is not enough, and the proposal counts those too:
 *"753 photographs are in an event but no longer in its collection."* A second

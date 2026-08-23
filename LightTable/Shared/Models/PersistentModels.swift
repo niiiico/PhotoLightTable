@@ -120,6 +120,16 @@ final class LightTableEvent {
     var photosAlbumID: String?
     var photosPickedAlbumID: String?
 
+    /// The Lightroom collection this event was imported from, by its path in
+    /// the catalogue.
+    ///
+    /// Provenance, so a later import can tell the difference between an event
+    /// somebody made here and one that stands for a collection — and can say
+    /// that a collection has been deleted rather than silently keeping its
+    /// event for ever. Optional because events made by hand have no such
+    /// origin, and because it arrived after the events that predate it.
+    var lightroomPath: String?
+
     init(name: String,
          startDate: Date,
          endDate: Date,

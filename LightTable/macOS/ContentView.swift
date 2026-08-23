@@ -607,8 +607,8 @@ private struct LightroomImportAlerts: ViewModifier {
                     }
                     // Offered only when it would actually take something out,
                     // so the destructive choice is absent rather than idle.
-                    if pending.stale > 0 {
-                        Button("Replace Membership", role: .destructive) {
+                    if pending.stale > 0 || !pending.vanished.isEmpty {
+                        Button("Match Catalogue", role: .destructive) {
                             onImport(pending, .replace)
                             proposal = nil
                         }
