@@ -191,7 +191,7 @@ struct DateRangeTests {
 struct GranularityTests {
     @Test("Each step is strictly wider than the last")
     func gapsIncrease() {
-        let ladder: [ClusterGranularity] = [.session, .outing, .day, .trip]
+        let ladder = ClusterGranularity.allCases
         for (narrower, wider) in zip(ladder, ladder.dropFirst()) {
             #expect(narrower.maximumGap < wider.maximumGap)
         }
@@ -202,13 +202,77 @@ struct GranularityTests {
         // Pressing R repeatedly widens the selection; if this ever cycled, it
         // would never settle.
         var seen: [ClusterGranularity] = []
-        var current: ClusterGranularity? = .session
+        var current: ClusterGranularity? = ClusterGranularity.allCases.first
         while let step = current {
             #expect(!seen.contains(step))
             seen.append(step)
             current = step.next
         }
 
-        #expect(seen == [.session, .outing, .day, .trip])
+        #expect(seen == ClusterGranularity.allCases)
+    }
+}
+
+/// A burst is the tightest rung: frames from one press of the shutter, which is
+/// where a 3,000-frame day actually needs thinning. Timings here mirror a real
+/// sequence — roughly two frames a second, with the camera repositioned between
+/// subjects.
+@Suite("Clustering a burst")
+struct BurstClusterTests {
+    private func frame(_ id: String, plusSeconds offset: Double) -> FakePhoto {
+        FakePhoto(id, at: origin.addingTimeInterval(offset))
+    }
+
+    @Test("Frames half a second apart are one burst")
+    func rapidFramesStayTogether() {
+        let items = (0..<8).map { frame("f\($0)", plusSeconds: Double($0) * 0.5) }
+        let groups = EventSuggester.clusters(in: items, granularity: .burst)
+
+        #expect(groups.count == 1)
+        #expect(groups[0].count == 8)
+    }
+
+    @Test("Lifting off the shutter starts a new burst")
+    func pauseSplits() {
+        // Two runs with a five-second reposition between them.
+        let first = (0..<4).map { frame("a\($0)", plusSeconds: Double($0) * 0.5) }
+        let second = (0..<4).map { frame("b\($0)", plusSeconds: 5 + Double($0) * 0.5) }
+        let groups = EventSuggester.clusters(in: first + second, granularity: .burst)
+
+        #expect(groups.count == 2)
+        #expect(groups[0].map(\.id) == ["a0", "a1", "a2", "a3"])
+        #expect(groups[1].map(\.id) == ["b0", "b1", "b2", "b3"])
+    }
+
+    @Test("Exactly at the gap stays together; past it splits")
+    func boundaryIsInclusive() {
+        // shouldSplit uses `>`, so a gap equal to the maximum is still one run.
+        let atLimit = [frame("a", plusSeconds: 0), frame("b", plusSeconds: 2)]
+        #expect(EventSuggester.clusters(in: atLimit, granularity: .burst).count == 1)
+
+        let pastLimit = [frame("a", plusSeconds: 0), frame("b", plusSeconds: 2.5)]
+        #expect(EventSuggester.clusters(in: pastLimit, granularity: .burst).count == 2)
+    }
+
+    @Test("Bursts nest inside the session that contains them")
+    func burstsNestInsideSession() {
+        // The point of the ladder: R selects the burst, R again widens to the
+        // whole session those bursts belong to.
+        let runs = (0..<3).flatMap { run in
+            (0..<5).map { frame("r\(run)f\($0)", plusSeconds: Double(run) * 30 + Double($0) * 0.5) }
+        }
+
+        #expect(EventSuggester.clusters(in: runs, granularity: .burst).count == 3)
+        #expect(EventSuggester.clusters(in: runs, granularity: .session).count == 1)
+    }
+
+    @Test("Growing from one frame selects its burst, not the whole shoot")
+    func relatedGrowsToBurst() {
+        let runs = (0..<3).flatMap { run in
+            (0..<5).map { frame("r\(run)f\($0)", plusSeconds: Double(run) * 30 + Double($0) * 0.5) }
+        }
+        let grown = EventSuggester.related(to: ["r1f2"], in: runs, granularity: .burst)
+
+        #expect(grown.map(\.id) == ["r1f0", "r1f1", "r1f2", "r1f3", "r1f4"])
     }
 }

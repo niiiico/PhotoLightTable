@@ -86,12 +86,13 @@ for the stragglers.
 
 Events are defined by hand, but you rarely want to hunt for the boundaries.
 `EventSuggester` splits photos into runs of temporally adjacent shots, starting a
-new run when consecutive photos are further apart than a threshold. Four
+new run when consecutive photos are further apart than a threshold. Five
 granularities are offered rather than one guessed value, because the right answer
 depends entirely on what was shot:
 
 | | Gap | For |
 | --- | --- | --- |
+| Burst | 2s | one press of the shutter |
 | Session | 2h | a ceremony, a golden hour |
 | Outing | 8h | a day out, a single shoot |
 | Day | 20h | breaks overnight |
@@ -102,7 +103,7 @@ even when they're close in time, so a flight or a long drive breaks the run. It
 is only consulted when both photos have a GPS fix.
 
 Press `R` in the grid to grow the selection to the focused photo's group;
-pressing it again widens one step (session → outing → day → trip), so you can
+pressing it again widens one step (burst → session → outing → day → trip), so you can
 feel out the right boundary visually. The context menu offers the granularities
 directly. Creating an event from a selection opens the editor already grown to
 the matching group, with a live count and date range as you change granularity.

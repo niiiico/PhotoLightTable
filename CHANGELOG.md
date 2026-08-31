@@ -3,6 +3,8 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
+2026-08-31 - Give the related-photos ladder a rung below Session: Burst groups frames taken within two seconds of each other, one press of the shutter. A day of continuous shooting is a hundred sequences of near-identical frames rather than three thousand separate photographs, and choosing Burst from Select Related makes R widen from there — session, outing, day, trip. The ladder's own tests were reading from a hardcoded list, so a new rung escaped them; they read allCases now.
+
 2026-08-24 - Let an iPad catch up with the Mac: Rebuild from Photos Albums and the sync switch are on touch now, so events and verdicts travel between devices through iCloud Photos rather than through anything of ours.
 
 2026-08-23 - Make the Lightroom import a synchronisation rather than an accumulation: events record the collection they came from, an event renamed or moved here is recognised by what it holds instead of being duplicated, and Match Catalogue removes events whose collections have been deleted — never one made by hand. Replace the import's alert with a sheet: four groups, a checkbox on every line, and a footer that says what the ticked boxes add up to, with the missing files listed by path. Fix the matcher refusing a raw and its JPEG: one frame of twenty-two shoots was reported missing while sitting in the library twice over.

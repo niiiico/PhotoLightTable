@@ -5,15 +5,16 @@ import Foundation
 ///
 /// Which one is right depends entirely on what you shot: a wedding reception is
 /// one *outing*, a two-week trip is one *trip*. Rather than guess, the app
-/// offers all four and shows the resulting count live.
+/// offers all five and shows the resulting count live.
 enum ClusterGranularity: String, CaseIterable, Identifiable {
-    case session, outing, day, trip
+    case burst, session, outing, day, trip
 
     var id: String { rawValue }
 
     /// A new group starts when consecutive photos are further apart than this.
     var maximumGap: TimeInterval {
         switch self {
+        case .burst: return 2                  // one press of the shutter
         case .session: return 60 * 60 * 2      // a ceremony, a golden hour
         case .outing: return 60 * 60 * 8       // a day out, a shoot
         case .day: return 60 * 60 * 20         // overnight break
@@ -23,6 +24,7 @@ enum ClusterGranularity: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .burst: return "Burst"
         case .session: return "Session"
         case .outing: return "Outing"
         case .day: return "Day"
@@ -33,6 +35,7 @@ enum ClusterGranularity: String, CaseIterable, Identifiable {
     /// The next looser setting, or nil at the widest.
     var next: ClusterGranularity? {
         switch self {
+        case .burst: return .session
         case .session: return .outing
         case .outing: return .day
         case .day: return .trip
@@ -42,6 +45,7 @@ enum ClusterGranularity: String, CaseIterable, Identifiable {
 
     var help: String {
         switch self {
+        case .burst: return "One press of the shutter; breaks after 2 seconds."
         case .session: return "Breaks whenever you stopped shooting for 2 hours."
         case .outing: return "One outing or shoot; breaks after 8 hours."
         case .day: return "Breaks overnight, so each day stays together."
