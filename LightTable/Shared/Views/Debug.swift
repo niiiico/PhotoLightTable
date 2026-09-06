@@ -89,6 +89,17 @@ enum Debug {
         return URL(fileURLWithPath: path)
     }
 
+    /// Says something, when anyone is listening.
+    ///
+    /// The message is built only if it will be printed — several of these sit
+    /// on paths Photos drives at its own rate, and formatting a line nobody
+    /// reads, thousands of times an hour, is exactly the sort of cost this
+    /// enum exists to look for.
+    static func log(_ message: @autoclosure () -> String) {
+        guard isEnabled else { return }
+        fputs("[debug] \(message())\n", stderr)
+    }
+
     /// Times a piece of work and prints it when it took long enough to be felt.
     ///
     /// A sixtieth of a second is the budget for anything on the way to the

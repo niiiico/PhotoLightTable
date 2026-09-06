@@ -307,6 +307,17 @@ extension PhotoLibraryService: PHPhotoLibraryChangeObserver {
                     ? !(details.insertedObjects.isEmpty && details.removedObjects.isEmpty)
                         || details.hasMoves
                     : true
+                // What Photos actually asks for, and how often. The grid
+                // rebuilds on any of these that reaches `apply(changed:)`, and
+                // whether that is worth narrowing is a question about the rate,
+                // which is a question about someone's real library.
+                Debug.log(String(format: "change: inserted=%d removed=%d moves=%@ changed=%d -> %@",
+                                 details.insertedObjects.count,
+                                 details.removedObjects.count,
+                                 details.hasIncrementalChanges ? (details.hasMoves ? "yes" : "no") : "n/a",
+                                 details.changedObjects.count,
+                                 isStructural ? "reload" : "in place"))
+
                 if isStructural {
                     await reload()
                 } else if details.hasIncrementalChanges {
