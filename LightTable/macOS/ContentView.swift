@@ -61,6 +61,7 @@ struct ContentView: View {
             SidebarView(events: events,
                         allItems: library.items,
                         favoriteCount: projection.favorites,
+                        snapshotVersion: library.snapshotVersion,
                         editingEvent: Binding(
                             get: { nil },
                             set: { if let event = $0 { editorMode = .edit(event) } }

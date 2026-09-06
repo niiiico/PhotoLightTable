@@ -62,9 +62,20 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     @Published private(set) var authState: AuthState = .undetermined
     @Published private(set) var items: [PhotoItem] = []
     @Published private(set) var isLoading = false
-    /// Bumped on each successful reload, so derived state can be invalidated
-    /// without comparing the whole array.
+    /// Bumped whenever anything about the library changes, so derived state can
+    /// be invalidated without comparing the whole array. That includes an asset
+    /// replaced in place, which Photos asks for constantly — analysis, iCloud,
+    /// our own album writes — so anything expensive should key on
+    /// `snapshotVersion` instead.
     @Published private(set) var version = 0
+    /// Bumped only when the whole list is re-read: assets appearing, leaving,
+    /// or being hidden.
+    ///
+    /// A hidden photograph does not leave the library — it leaves the general
+    /// fetch and returns through the Hidden album — so a hide changes neither
+    /// the count nor any event's shape, and the two things a count cache would
+    /// otherwise key on both hold still through it.
+    @Published private(set) var snapshotVersion = 0
 
     /// Fires on any photo-library change, including ones that only touch albums.
     var onLibraryChange: (() -> Void)?
@@ -181,6 +192,7 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         items = snapshot
         indexByID = Dictionary(uniqueKeysWithValues: snapshot.enumerated().map { ($1.id, $0) })
         version &+= 1
+        snapshotVersion &+= 1
     }
 
     /// Re-reads one asset and replaces its entry.

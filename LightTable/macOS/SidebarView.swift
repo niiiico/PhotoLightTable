@@ -8,6 +8,11 @@ struct SidebarView: View {
     /// Counted by the projection, which already walks the library and already
     /// tracks its version.
     let favoriteCount: Int
+    /// Bumped when the library is re-read. What the event counts below are
+    /// invalidated on: an asset hidden in Photos changes which events read as
+    /// hidden without changing how many photographs there are or the shape of
+    /// any event, so neither of the other two parts of the key moves.
+    let snapshotVersion: Int
     @Binding var editingEvent: LightTableEvent?
     let onNewEvent: () -> Void
     let onSyncSettingChanged: () -> Void
@@ -34,7 +39,7 @@ struct SidebarView: View {
         // Counting is a pass over the library per event, and this body runs on
         // every selection change — including each step of a drag across the
         // grid. The cache makes all but the first of those free.
-        counts.refresh(events: events, items: allItems)
+        counts.refresh(events: events, items: allItems, snapshotVersion: snapshotVersion)
 
         return List(selection: $app.selection) {
             Section("Library") {
@@ -287,14 +292,26 @@ final class EventCountCache: ObservableObject {
     private struct Key: Equatable {
         var itemCount: Int
         var eventsStamp: Int
+        /// Deliberately the snapshot rather than the library's `version`, which
+        /// moves on every change notification Photos fires and would put an
+        /// `EventMembership` pass per event, over the whole library, in the
+        /// sidebar's body several times a second.
+        ///
+        /// The gap this leaves: a creation date edited in Photos moves a
+        /// photograph across an event's dates without re-snapshotting, so that
+        /// badge is one reload behind. A rare edit against a per-notification
+        /// recount of every event is the trade being made.
+        var snapshotVersion: Int
     }
 
     private var key: Key?
     private var counts: [PersistentIdentifier: Int] = [:]
     private var hidden: Set<PersistentIdentifier> = []
 
-    func refresh(events: [LightTableEvent], items: [PhotoItem]) {
-        let newKey = Key(itemCount: items.count, eventsStamp: EventMembership.stamp(of: events))
+    func refresh(events: [LightTableEvent], items: [PhotoItem], snapshotVersion: Int) {
+        let newKey = Key(itemCount: items.count,
+                         eventsStamp: EventMembership.stamp(of: events),
+                         snapshotVersion: snapshotVersion)
         guard newKey != key else { return }
         key = newKey
 
