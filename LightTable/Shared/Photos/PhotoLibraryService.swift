@@ -65,8 +65,12 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     /// Bumped whenever anything about the library changes, so derived state can
     /// be invalidated without comparing the whole array. That includes an asset
     /// replaced in place, which Photos asks for constantly — analysis, iCloud,
-    /// our own album writes — so anything expensive should key on
-    /// `snapshotVersion` instead.
+    /// our own album writes.
+    ///
+    /// The grid keys on this and has to: a favourite toggled or an edit applied
+    /// changes what it draws without changing the list. Anything whose answer
+    /// only moves when the list itself does should key on `snapshotVersion`,
+    /// which is far quieter.
     @Published private(set) var version = 0
     /// Bumped only when the whole list is re-read: assets appearing, leaving,
     /// or being hidden.
@@ -285,13 +289,23 @@ extension PhotoLibraryService: PHPhotoLibraryChangeObserver {
                let details = changeInstance.changeDetails(for: current) {
                 fetchResult = details.fetchResultAfterChanges
 
-                // Only assets appearing or disappearing needs a re-snapshot.
-                // Photos fires change notifications constantly — analysis,
-                // iCloud, and our own album writes — and the previous condition
-                // was true for nearly all of them, so a 75k-asset library was
-                // re-snapshotted every few seconds, several seconds at a time.
+                // Only assets appearing, disappearing or moving needs a
+                // re-snapshot. Photos fires change notifications constantly —
+                // analysis, iCloud, and our own album writes — and the previous
+                // condition was true for nearly all of them, so a 75k-asset
+                // library was re-snapshotted every few seconds, several seconds
+                // at a time.
+                //
+                // Moves count because this fetch is sorted by creation date: a
+                // camera clock corrected in Photos moves a photograph without
+                // inserting or removing anything, and `apply(changed:)` would
+                // write it back at its old index — leaving the list no longer
+                // newest-first, which `AppModel.sort` relies on to be a reverse
+                // rather than a sort, and leaving it in an event it has just
+                // left. Rare, unlike the notifications this still ignores.
                 let isStructural = details.hasIncrementalChanges
                     ? !(details.insertedObjects.isEmpty && details.removedObjects.isEmpty)
+                        || details.hasMoves
                     : true
                 if isStructural {
                     await reload()

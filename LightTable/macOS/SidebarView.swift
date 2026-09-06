@@ -297,10 +297,11 @@ final class EventCountCache: ObservableObject {
         /// `EventMembership` pass per event, over the whole library, in the
         /// sidebar's body several times a second.
         ///
-        /// The gap this leaves: a creation date edited in Photos moves a
-        /// photograph across an event's dates without re-snapshotting, so that
-        /// badge is one reload behind. A rare edit against a per-notification
-        /// recount of every event is the trade being made.
+        /// Everything these counts read — which photographs there are, when
+        /// they were taken, which are hidden — moves the list itself, and so
+        /// re-snapshots. That is why a date edit counts as structural over in
+        /// `photoLibraryDidChange`: without it this key would hold still while
+        /// a photograph walked out of an event.
         var snapshotVersion: Int
     }
 
