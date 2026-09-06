@@ -64,6 +64,15 @@ final class LibraryProjection: ObservableObject {
     /// cell scrolls into view. It changes only when the sections do.
     private(set) var timeline = TimelineData()
 
+    /// How many photographs Photos calls favourites, for the sidebar's badge.
+    ///
+    /// Counted here rather than beside the event counts: this is a pass over
+    /// the whole library and it changes with the library's version, while the
+    /// event counts change with the events. Keying them together meant every
+    /// change notification Photos fires — and it fires them constantly —
+    /// re-counted every event as well.
+    private(set) var favorites = 0
+
     /// The ids in scope, for counting verdicts against without walking the
     /// library again.
     private var scopedIDs: Set<String> = []
@@ -112,6 +121,7 @@ final class LibraryProjection: ObservableObject {
         Debug.time("scope") { scoped = app.scope(items, events: events) }
         let ordered = Debug.time("filter+sort") { app.sort(app.filter(scoped, ratings: ratings)) }
         Debug.time("scoped ids") { scopedIDs = Set(scoped.map(\.id)) }
+        favorites = items.count(where: \.isFavorite)
         let stacked = Debug.time("stack") {
             Self.stacked(ordered,
                          isFamilyMember: { ratings.isInFamily($0) },

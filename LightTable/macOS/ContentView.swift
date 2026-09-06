@@ -60,7 +60,7 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView(events: events,
                         allItems: library.items,
-                        libraryVersion: library.version,
+                        favoriteCount: projection.favorites,
                         editingEvent: Binding(
                             get: { nil },
                             set: { if let event = $0 { editorMode = .edit(event) } }

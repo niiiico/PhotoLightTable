@@ -5,10 +5,9 @@ import SwiftUI
 struct SidebarView: View {
     let events: [LightTableEvent]
     let allItems: [PhotoItem]
-    /// Bumped whenever the library is re-read. The counts below are cached
-    /// against it because a favourite set elsewhere changes what a photograph
-    /// says about itself without changing how many there are.
-    let libraryVersion: Int
+    /// Counted by the projection, which already walks the library and already
+    /// tracks its version.
+    let favoriteCount: Int
     @Binding var editingEvent: LightTableEvent?
     let onNewEvent: () -> Void
     let onSyncSettingChanged: () -> Void
@@ -35,7 +34,7 @@ struct SidebarView: View {
         // Counting is a pass over the library per event, and this body runs on
         // every selection change — including each step of a drag across the
         // grid. The cache makes all but the first of those free.
-        counts.refresh(events: events, items: allItems, libraryVersion: libraryVersion)
+        counts.refresh(events: events, items: allItems)
 
         return List(selection: $app.selection) {
             Section("Library") {
@@ -43,7 +42,7 @@ struct SidebarView: View {
                     .badge(allItems.count)
                     .tag(LibrarySelection.allPhotos)
                 Label("Favourites", systemImage: "heart")
-                    .badge(counts.favorites)
+                    .badge(favoriteCount)
                     .tag(LibrarySelection.favorites)
             }
 
@@ -287,25 +286,19 @@ private struct EventFolderRow: View {
 final class EventCountCache: ObservableObject {
     private struct Key: Equatable {
         var itemCount: Int
-        var libraryVersion: Int
         var eventsStamp: Int
     }
 
     private var key: Key?
     private var counts: [PersistentIdentifier: Int] = [:]
     private var hidden: Set<PersistentIdentifier> = []
-    /// How many photographs Photos calls favourites.
-    private(set) var favorites = 0
 
-    func refresh(events: [LightTableEvent], items: [PhotoItem], libraryVersion: Int) {
-        let newKey = Key(itemCount: items.count,
-                         libraryVersion: libraryVersion,
-                         eventsStamp: EventMembership.stamp(of: events))
+    func refresh(events: [LightTableEvent], items: [PhotoItem]) {
+        let newKey = Key(itemCount: items.count, eventsStamp: EventMembership.stamp(of: events))
         guard newKey != key else { return }
         key = newKey
 
         let hiddenIDs = Set(items.filter(\.isHidden).map(\.id))
-        favorites = items.count(where: \.isFavorite)
         counts = [:]
         hidden = []
         for event in events {
