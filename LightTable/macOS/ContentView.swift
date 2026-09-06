@@ -69,7 +69,7 @@ struct ContentView: View {
             SidebarView(events: events,
                         allItems: library.items,
                         favoriteCount: projection.favorites,
-                        snapshotVersion: library.snapshotVersion,
+                        structureVersion: library.structureVersion,
                         eventsStamp: eventsStamp,
                         editingEvent: Binding(
                             get: { nil },

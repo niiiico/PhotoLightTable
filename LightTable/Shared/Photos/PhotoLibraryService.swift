@@ -36,6 +36,24 @@ struct PhotoItem: Identifiable, Hashable {
         return CGFloat(pixelWidth) / CGFloat(pixelHeight)
     }
 
+    /// Whether replacing `other` with this changes anything the grid's shape is
+    /// built from — which photographs are in scope, and where they fall.
+    ///
+    /// Everything else an asset carries can change without moving anything: a
+    /// new rendition after an edit, a location finally resolved, dimensions
+    /// re-read. The grid has to hear about those — it holds the asset it draws
+    /// from — but a count of what is in each event does not.
+    ///
+    /// `isHidden` is here although PhotoKit does not change it in place today —
+    /// hiding removes the photograph from the general fetch, which is a
+    /// re-read. It is a property of Photos rather than a promise, and the rule
+    /// this list stands for is "anything that decides shape or drawing".
+    func changesShape(from other: PhotoItem) -> Bool {
+        creationDate != other.creationDate
+            || isFavorite != other.isFavorite
+            || isHidden != other.isHidden
+    }
+
     static func == (lhs: PhotoItem, rhs: PhotoItem) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
@@ -67,19 +85,20 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     /// replaced in place, which Photos asks for constantly — analysis, iCloud,
     /// our own album writes.
     ///
-    /// The grid keys on this and has to: a favourite toggled or an edit applied
-    /// changes what it draws without changing the list. Anything whose answer
-    /// only moves when the list itself does should key on `snapshotVersion`,
-    /// which is far quieter.
+    /// The grid keys on this and has to: it holds each photograph's asset, and
+    /// a stale one hands back the rendition from before the edit. Anything that
+    /// only counts or groups should key on `structureVersion`, which is far
+    /// quieter — it does not move for a re-read that leaves everything where it
+    /// was.
     @Published private(set) var version = 0
-    /// Bumped only when the whole list is re-read: assets appearing, leaving,
-    /// or being hidden.
+    /// Bumped when the shape of the library changes: photographs appearing,
+    /// leaving, or one of the few properties the grid is laid out from moving.
     ///
     /// A hidden photograph does not leave the library — it leaves the general
     /// fetch and returns through the Hidden album — so a hide changes neither
     /// the count nor any event's shape, and the two things a count cache would
-    /// otherwise key on both hold still through it.
-    @Published private(set) var snapshotVersion = 0
+    /// otherwise key on both hold still through it. This moves, so they hold.
+    @Published private(set) var structureVersion = 0
 
     /// Fires on any photo-library change, including ones that only touch albums.
     var onLibraryChange: (() -> Void)?
@@ -196,7 +215,7 @@ final class PhotoLibraryService: NSObject, ObservableObject {
         items = snapshot
         indexByID = Dictionary(uniqueKeysWithValues: snapshot.enumerated().map { ($1.id, $0) })
         version &+= 1
-        snapshotVersion &+= 1
+        structureVersion &+= 1
     }
 
     /// Re-reads one asset and replaces its entry.
@@ -210,21 +229,32 @@ final class PhotoLibraryService: NSObject, ObservableObject {
               let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
         else { return }
 
-        items[index] = PhotoItem(asset: asset)
+        let replaced = PhotoItem(asset: asset)
+        let previous = items[index]
+        items[index] = replaced
         ThumbnailLoader.shared.forget(assetID: id)
         version &+= 1
+        if replaced.changesShape(from: previous) { structureVersion &+= 1 }
     }
 
     private func apply(changed assets: [PHAsset]) {
         guard !assets.isEmpty else { return }
         var touched = false
+        var shapeMoved = false
         for asset in assets {
             guard let index = indexByID[asset.localIdentifier] else { continue }
-            items[index] = PhotoItem(asset: asset)
+            let item = PhotoItem(asset: asset)
+            let previous = items[index]
+            items[index] = item
             ThumbnailLoader.shared.forget(assetID: asset.localIdentifier)
             touched = true
+            if item.changesShape(from: previous) { shapeMoved = true }
         }
-        if touched { version &+= 1 }
+        guard touched else { return }
+        version &+= 1
+        // Almost never: an edit, an iCloud download or an analysis pass leaves
+        // every photograph exactly where it was.
+        if shapeMoved { structureVersion &+= 1 }
     }
 
     // MARK: - Grouping

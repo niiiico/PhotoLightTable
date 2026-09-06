@@ -8,11 +8,12 @@ struct SidebarView: View {
     /// Counted by the projection, which already walks the library and already
     /// tracks its version.
     let favoriteCount: Int
-    /// Bumped when the library is re-read. What the event counts below are
-    /// invalidated on: an asset hidden in Photos changes which events read as
-    /// hidden without changing how many photographs there are or the shape of
-    /// any event, so neither of the other two parts of the key moves.
-    let snapshotVersion: Int
+    /// Bumped when the shape of the library changes. What the event counts
+    /// below are invalidated on: a photograph hidden in Photos changes which
+    /// events read as hidden, and a date corrected moves one between events,
+    /// without either changing how many photographs there are or the shape of
+    /// any event — so neither of the other two parts of the key moves.
+    let structureVersion: Int
     /// Handed in rather than computed here: reading it walks every event and
     /// decodes each one's pinned and excluded lists out of the store, and the
     /// projection needs the same number in the same pass.
@@ -45,7 +46,7 @@ struct SidebarView: View {
         // grid. The cache makes all but the first of those free.
         counts.refresh(events: events,
                        items: allItems,
-                       snapshotVersion: snapshotVersion,
+                       structureVersion: structureVersion,
                        eventsStamp: eventsStamp)
 
         return List(selection: $app.selection) {
@@ -299,24 +300,22 @@ final class EventCountCache: ObservableObject {
     private struct Key: Equatable {
         var itemCount: Int
         var eventsStamp: Int
-        /// Deliberately the snapshot rather than the library's `version`, which
-        /// moves on every change notification Photos fires and would put an
-        /// `EventMembership` pass per event, over the whole library, in the
+        /// Deliberately the shape of the library rather than its contents,
+        /// which move on every change notification Photos fires and would put
+        /// an `EventMembership` pass per event, over the whole library, in the
         /// sidebar's body several times a second.
         ///
-        /// What these counts read — which photographs there are, when they
-        /// were taken, which are hidden — moves the general fetch, and so
-        /// re-snapshots. That is why a date edit counts as structural over in
-        /// `photoLibraryDidChange`: without it this key would hold still while
-        /// a photograph walked out of an event.
+        /// Everything these counts read — which photographs there are, when
+        /// they were taken, which are hidden — is in that shape by
+        /// construction, so this is the whole of what they depend on.
         ///
         /// The exception is the Hidden album, which is a separate fetch and is
         /// not observed at all: a date edited on a photograph already hidden
-        /// reaches nothing here, and that badge waits for the next re-snapshot
-        /// from any other cause. Hidden photographs are covered in the grid
-        /// rather than drawn, so a count that includes one is not a number
-        /// anybody is reading closely.
-        var snapshotVersion: Int
+        /// reaches nothing here, and that badge waits for the next change from
+        /// any other cause. Hidden photographs are covered in the grid rather
+        /// than drawn, so a count that includes one is not a number anybody is
+        /// reading closely.
+        var structureVersion: Int
     }
 
     private var key: Key?
@@ -325,11 +324,11 @@ final class EventCountCache: ObservableObject {
 
     func refresh(events: [LightTableEvent],
                  items: [PhotoItem],
-                 snapshotVersion: Int,
+                 structureVersion: Int,
                  eventsStamp: Int) {
         let newKey = Key(itemCount: items.count,
                          eventsStamp: eventsStamp,
-                         snapshotVersion: snapshotVersion)
+                         structureVersion: structureVersion)
         guard newKey != key else { return }
         key = newKey
 
