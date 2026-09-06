@@ -18,9 +18,12 @@ struct ScopeTally {
     /// asking after every photograph in the scope walked all of them, once per
     /// keystroke while culling. `scopedIDs` is built with the rest of the
     /// projection, and only when the scope itself changes.
-    init(total: Int, scopedIDs: Set<String>, verdicts: [String: RatingValue]) {
+    ///
+    /// `nil` means the scope is the whole library and every verdict counts —
+    /// which saves building a set of every identifier in it just to be told so.
+    init(total: Int, scopedIDs: Set<String>?, verdicts: [String: RatingValue]) {
         self.total = total
-        for (id, value) in verdicts where scopedIDs.contains(id) {
+        for (id, value) in verdicts where scopedIDs?.contains(id) ?? true {
             switch value.pick {
             case .picked: picked += 1
             case .rejected: rejected += 1

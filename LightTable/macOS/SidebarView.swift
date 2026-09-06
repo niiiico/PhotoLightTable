@@ -13,6 +13,10 @@ struct SidebarView: View {
     /// hidden without changing how many photographs there are or the shape of
     /// any event, so neither of the other two parts of the key moves.
     let snapshotVersion: Int
+    /// Handed in rather than computed here: reading it walks every event and
+    /// decodes each one's pinned and excluded lists out of the store, and the
+    /// projection needs the same number in the same pass.
+    let eventsStamp: Int
     @Binding var editingEvent: LightTableEvent?
     let onNewEvent: () -> Void
     let onSyncSettingChanged: () -> Void
@@ -39,7 +43,10 @@ struct SidebarView: View {
         // Counting is a pass over the library per event, and this body runs on
         // every selection change — including each step of a drag across the
         // grid. The cache makes all but the first of those free.
-        counts.refresh(events: events, items: allItems, snapshotVersion: snapshotVersion)
+        counts.refresh(events: events,
+                       items: allItems,
+                       snapshotVersion: snapshotVersion,
+                       eventsStamp: eventsStamp)
 
         return List(selection: $app.selection) {
             Section("Library") {
@@ -316,9 +323,12 @@ final class EventCountCache: ObservableObject {
     private var counts: [PersistentIdentifier: Int] = [:]
     private var hidden: Set<PersistentIdentifier> = []
 
-    func refresh(events: [LightTableEvent], items: [PhotoItem], snapshotVersion: Int) {
+    func refresh(events: [LightTableEvent],
+                 items: [PhotoItem],
+                 snapshotVersion: Int,
+                 eventsStamp: Int) {
         let newKey = Key(itemCount: items.count,
-                         eventsStamp: EventMembership.stamp(of: events),
+                         eventsStamp: eventsStamp,
                          snapshotVersion: snapshotVersion)
         guard newKey != key else { return }
         key = newKey

@@ -75,7 +75,12 @@ final class LibraryProjection: ObservableObject {
 
     /// The ids in scope, for counting verdicts against without walking the
     /// library again.
-    private var scopedIDs: Set<String> = []
+    ///
+    /// `nil` when the scope is the whole library, which is the common case and
+    /// the expensive one: the set would answer yes to every question asked of
+    /// it, and building it means hashing every identifier in the library —
+    /// fifty milliseconds of a rebuild, to learn nothing.
+    private var scopedIDs: Set<String>?
 
     private var structureKey: StructureKey?
     private var tallyKey: (structure: StructureKey, ratingsRevision: Int)?
@@ -83,6 +88,7 @@ final class LibraryProjection: ObservableObject {
     func refresh(items: [PhotoItem],
                  libraryVersion: Int,
                  events: [LightTableEvent],
+                 eventsStamp: Int,
                  app: AppModel,
                  ratings: RatingStore) {
         // Only a filter that reads verdicts makes the contents depend on them.
@@ -96,7 +102,7 @@ final class LibraryProjection: ObservableObject {
                                   ratingsRevision: filterReadsVerdicts ? ratings.revision : 0,
                                   variantsRevision: ratings.variantsRevision,
                                   expandedStacks: app.expandedStacks,
-                                  eventsStamp: EventMembership.stamp(of: events))
+                                  eventsStamp: eventsStamp)
 
         if newKey != structureKey {
             structureKey = newKey
@@ -120,7 +126,13 @@ final class LibraryProjection: ObservableObject {
                          ratings: RatingStore) {
         Debug.time("scope") { scoped = app.scope(items, events: events) }
         let ordered = Debug.time("filter+sort") { app.sort(app.filter(scoped, ratings: ratings)) }
-        Debug.time("scoped ids") { scopedIDs = Set(scoped.map(\.id)) }
+        // Every scope returns a subset of the library, so equal counts mean
+        // the same photographs — which is a count comparison rather than a
+        // question about which scope is selected, and stays true for whatever
+        // scope is added next.
+        Debug.time("scoped ids") {
+            scopedIDs = scoped.count == items.count ? nil : Set(scoped.map(\.id))
+        }
         favorites = items.count(where: \.isFavorite)
         let stacked = Debug.time("stack") {
             Self.stacked(ordered,
@@ -180,8 +192,14 @@ final class LibraryProjection: ObservableObject {
         variantsOf: (String) -> [String],
         isExpanded: (String) -> Bool
     ) -> (items: [Item], sizes: [String: Int], openFamilies: [[String]]) where Item.ID == String {
+        // Asked once per photograph and remembered, rather than asked again in
+        // each of the passes below. In a library of ninety thousand that is the
+        // difference between ninety thousand hashes of an identifier and two
+        // hundred and seventy thousand — most of the time this function spent.
+        var isMember = [Bool](repeating: false, count: items.count)
         var byID: [String: Item] = [:]
-        for item in items where isFamilyMember(item.id) {
+        for (index, item) in items.enumerated() where isFamilyMember(item.id) {
+            isMember[index] = true
             // First wins, as before: a duplicated id would otherwise change
             // which photo stands for the family.
             if byID[item.id] == nil { byID[item.id] = item }
@@ -196,9 +214,9 @@ final class LibraryProjection: ObservableObject {
         var openFamilies: [[String]] = []
         result.reserveCapacity(items.count)
 
-        for item in items {
+        for (index, item) in items.enumerated() {
             // Not in a family: it stands for itself, wherever it fell.
-            guard isFamilyMember(item.id) else {
+            guard isMember[index] else {
                 result.append(item)
                 continue
             }
@@ -243,7 +261,7 @@ final class LibraryProjection: ObservableObject {
         }
 
         // Anything held back whose source turned out not to be here after all.
-        for item in items where isFamilyMember(item.id) && !emitted.contains(item.id) {
+        for (index, item) in items.enumerated() where isMember[index] && !emitted.contains(item.id) {
             result.append(item)
         }
         return (result, sizes, openFamilies)

@@ -23,9 +23,15 @@ enum EventMembership {
         }
     }
 
-    /// Cheap structural summary of the events, so a change to a date range or to
+    /// Structural summary of the events, so a change to a date range or to
     /// membership invalidates a cache keyed on it without a change counter
     /// threaded through every mutation site.
+    ///
+    /// Not cheap, despite the shape of it: the two list lengths are stored
+    /// attributes, and reading either decodes the whole list out of the store.
+    /// Measured at 17 ms over 73 events against 0.3 ms for the same summary
+    /// without them — so this is computed once per pass and handed to everyone
+    /// who needs it, rather than called wherever it is wanted.
     static func stamp(of events: [LightTableEvent]) -> Int {
         var hasher = Hasher()
         hasher.combine(events.count)

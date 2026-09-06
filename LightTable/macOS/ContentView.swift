@@ -33,15 +33,23 @@ struct ContentView: View {
     var body: some View {
         // Recomputed only when something it actually depends on moves — notably
         // not the selection, which changes on every step of a drag.
+        // Once per pass, for both the projection and the sidebar's counts:
+        // it walks every event and decodes each one's pinned and excluded
+        // lists out of the store, which is most of what a pass that changes
+        // nothing costs.
+        let eventsStamp = Debug.time("stamp", threshold: 0.001) {
+            EventMembership.stamp(of: events)
+        }
         Debug.time("projection") {
             projection.refresh(items: library.items,
                                libraryVersion: library.version,
                                events: events,
+                               eventsStamp: eventsStamp,
                                app: app,
                                ratings: ratings)
         }
 
-        return Debug.time("window body") { window.modifier(LightroomImportAlerts(
+        return Debug.time("window body") { window(eventsStamp: eventsStamp).modifier(LightroomImportAlerts(
             proposal: $pendingLightroom,
             error: $lightroomError,
             onImport: { proposal, mode in
@@ -56,12 +64,13 @@ struct ContentView: View {
                 onShow: { app.revealsHiddenPhotos = true })) }
     }
 
-    private var window: some View {
+    private func window(eventsStamp: Int) -> some View {
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView(events: events,
                         allItems: library.items,
                         favoriteCount: projection.favorites,
                         snapshotVersion: library.snapshotVersion,
+                        eventsStamp: eventsStamp,
                         editingEvent: Binding(
                             get: { nil },
                             set: { if let event = $0 { editorMode = .edit(event) } }
