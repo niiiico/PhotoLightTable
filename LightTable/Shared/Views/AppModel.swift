@@ -19,6 +19,11 @@ enum PickFilter: String, CaseIterable, Identifiable {
 
 enum LibrarySelection: Hashable {
     case allPhotos
+    /// What Photos itself has been told is a favourite. Read from the library,
+    /// never written here: it is the one judgement this app borrows rather
+    /// than keeps, and a heart set on the phone should mean the same thing on
+    /// the desk.
+    case favorites
     case event(PersistentIdentifier)
 }
 
@@ -161,7 +166,7 @@ final class AppModel: ObservableObject {
     /// a feed, so the most recent work is at the top.
     var defaultSortOrder: PhotoSortOrder {
         switch selection {
-        case .allPhotos: return .newestFirst
+        case .allPhotos, .favorites: return .newestFirst
         case .event: return .oldestFirst
         }
     }
@@ -245,6 +250,8 @@ final class AppModel: ObservableObject {
         switch selection {
         case .allPhotos:
             return items
+        case .favorites:
+            return items.filter(\.isFavorite)
         case .event(let id):
             guard let event = events.first(where: { $0.persistentModelID == id }) else { return [] }
             return EventMembership.members(of: event, in: items)

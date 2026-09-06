@@ -47,6 +47,10 @@ struct TouchRootView: View {
                     Label("All Photos", systemImage: "photo.on.rectangle.angled")
                         .badge(library.items.count)
                 }
+                row(.favorites) {
+                    Label("Favourites", systemImage: "heart")
+                        .badge(favoriteCount)
+                }
             }
 
             Section("Events") {
@@ -88,6 +92,13 @@ struct TouchRootView: View {
         .buttonStyle(.plain)
         .listRowBackground(app.selection == selection
                            ? Color.accentColor.opacity(0.18) : Color.clear)
+    }
+
+    /// Counted here rather than cached: this list is short, it is rebuilt only
+    /// when the sidebar is on screen, and there is no drag through a grid
+    /// behind it as there is on the Mac.
+    private var favoriteCount: Int {
+        library.items.count(where: \.isFavorite)
     }
 
     private func subtitle(for event: LightTableEvent) -> String {
@@ -150,6 +161,7 @@ struct TouchRootView: View {
     private var title: String {
         switch app.selection {
         case .allPhotos: return "All Photos"
+        case .favorites: return "Favourites"
         case .event(let id): return events.first { $0.persistentModelID == id }?.name ?? "Event"
         }
     }

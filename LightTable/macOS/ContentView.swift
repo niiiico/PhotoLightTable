@@ -60,6 +60,7 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView(events: events,
                         allItems: library.items,
+                        libraryVersion: library.version,
                         editingEvent: Binding(
                             get: { nil },
                             set: { if let event = $0 { editorMode = .edit(event) } }
@@ -241,6 +242,8 @@ struct ContentView: View {
         switch app.selection {
         case .allPhotos:
             return "All Photos"
+        case .favorites:
+            return "Favourites"
         case .event(let id):
             return events.first { $0.persistentModelID == id }?.name ?? "Event"
         }
