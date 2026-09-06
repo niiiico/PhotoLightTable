@@ -3,7 +3,7 @@
 Newest first. One line per day of work, occasionally more when a day covered
 several major features.
 
-2026-09-06 - Put Favourites under All Photos: the sidebar's Library section now has a second scope, the photographs Photos itself calls favourites, on the Mac and on touch. Read from the library and never written — the heart is Photos' judgement, not ours — and counted in the same cached pass as the events, now keyed on the library version so a favourite set elsewhere shows up on the next reload.
+2026-09-06 - Put Favourites under All Photos: the sidebar's Library section now has a second scope, the photographs Photos itself calls favourites, on the Mac and on touch. Read from the library and never written — the heart is Photos' judgement, not ours — and counted in the same cached pass as the events, now keyed on the library version so a favourite set elsewhere shows up on the next reload. Released as 0.7.
 
 2026-08-31 - Give the related-photos ladder a rung below Session: Burst groups frames taken within two seconds of each other, one press of the shutter. A day of continuous shooting is a hundred sequences of near-identical frames rather than three thousand separate photographs, and choosing Burst from Select Related makes R widen from there — session, outing, day, trip. The ladder's own tests were reading from a hardcoded list, so a new rung escaped them; they read allCases now.
 
