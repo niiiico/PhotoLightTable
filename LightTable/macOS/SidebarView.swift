@@ -297,11 +297,18 @@ final class EventCountCache: ObservableObject {
         /// `EventMembership` pass per event, over the whole library, in the
         /// sidebar's body several times a second.
         ///
-        /// Everything these counts read — which photographs there are, when
-        /// they were taken, which are hidden — moves the list itself, and so
+        /// What these counts read — which photographs there are, when they
+        /// were taken, which are hidden — moves the general fetch, and so
         /// re-snapshots. That is why a date edit counts as structural over in
         /// `photoLibraryDidChange`: without it this key would hold still while
         /// a photograph walked out of an event.
+        ///
+        /// The exception is the Hidden album, which is a separate fetch and is
+        /// not observed at all: a date edited on a photograph already hidden
+        /// reaches nothing here, and that badge waits for the next re-snapshot
+        /// from any other cause. Hidden photographs are covered in the grid
+        /// rather than drawn, so a count that includes one is not a number
+        /// anybody is reading closely.
         var snapshotVersion: Int
     }
 
