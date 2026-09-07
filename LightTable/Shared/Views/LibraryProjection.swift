@@ -77,9 +77,9 @@ final class LibraryProjection: ObservableObject {
     /// library again.
     ///
     /// `nil` when the scope is the whole library, which is the common case and
-    /// the expensive one: the set would answer yes to every question asked of
-    /// it, and building it means hashing every identifier in the library —
-    /// fifty milliseconds of a rebuild, to learn nothing.
+    /// the expensive one: building it means hashing every identifier in the
+    /// library, to arrive at a set the library already keeps. The question goes
+    /// to the library itself instead.
     private var scopedIDs: Set<String>?
 
     private var structureKey: StructureKey?
@@ -87,6 +87,7 @@ final class LibraryProjection: ObservableObject {
 
     func refresh(items: [PhotoItem],
                  libraryVersion: Int,
+                 isInLibrary: (String) -> Bool,
                  events: [LightTableEvent],
                  eventsStamp: Int,
                  app: AppModel,
@@ -114,9 +115,18 @@ final class LibraryProjection: ObservableObject {
         let newTallyKey = (newKey, ratings.revision)
         if tallyKey == nil || tallyKey! != newTallyKey {
             tallyKey = newTallyKey
-            tally = ScopeTally(total: scoped.count,
-                               scopedIDs: scopedIDs,
-                               verdicts: ratings.ratings)
+            // Written out rather than folded into one call: the library's own
+            // membership test arrives non-escaping, and it cannot be handed
+            // through an optional without the compiler assuming it got away.
+            if let scope = scopedIDs {
+                tally = ScopeTally(total: scoped.count,
+                                   verdicts: ratings.ratings,
+                                   isInScope: { scope.contains($0) })
+            } else {
+                tally = ScopeTally(total: scoped.count,
+                                   verdicts: ratings.ratings,
+                                   isInScope: isInLibrary)
+            }
         }
     }
 

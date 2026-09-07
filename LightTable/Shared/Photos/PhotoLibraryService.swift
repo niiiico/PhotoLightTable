@@ -107,6 +107,13 @@ final class PhotoLibraryService: NSObject, ObservableObject {
     /// Position of each asset in `items`, so a content change can be applied
     /// without scanning the whole library.
     private var indexByID: [String: Int] = [:]
+
+    /// Whether the library still holds this photograph.
+    ///
+    /// The index is kept for applying changes; this asks it the other question,
+    /// which saves anyone who wants to know building a set of ninety thousand
+    /// identifiers that this dictionary already is.
+    func contains(_ assetID: String) -> Bool { indexByID[assetID] != nil }
     private var isObserving = false
 
     // MARK: - Authorization

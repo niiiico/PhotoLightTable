@@ -22,6 +22,7 @@ struct TouchRootView: View {
     var body: some View {
         projection.refresh(items: library.items,
                            libraryVersion: library.version,
+                           isInLibrary: library.contains,
                            events: events,
                            eventsStamp: EventMembership.stamp(of: events),
                            app: app,

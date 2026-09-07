@@ -19,11 +19,17 @@ struct ScopeTally {
     /// keystroke while culling. `scopedIDs` is built with the rest of the
     /// projection, and only when the scope itself changes.
     ///
-    /// `nil` means the scope is the whole library and every verdict counts —
-    /// which saves building a set of every identifier in it just to be told so.
-    init(total: Int, scopedIDs: Set<String>?, verdicts: [String: RatingValue]) {
+    /// Asked photograph by photograph rather than given a set, so the scope
+    /// that is the whole library can answer from the index the library already
+    /// keeps instead of having a set of every identifier built for it.
+    ///
+    /// It has to be asked something. A verdict outlives the photograph it was
+    /// passed on — rejecting a hundred frames and then deleting them in Photos
+    /// leaves a hundred rows behind — and counting those would have the chips
+    /// describing a library that no longer exists.
+    init(total: Int, verdicts: [String: RatingValue], isInScope: (String) -> Bool) {
         self.total = total
-        for (id, value) in verdicts where scopedIDs?.contains(id) ?? true {
+        for (id, value) in verdicts where isInScope(id) {
             switch value.pick {
             case .picked: picked += 1
             case .rejected: rejected += 1

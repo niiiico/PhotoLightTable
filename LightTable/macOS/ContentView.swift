@@ -43,6 +43,7 @@ struct ContentView: View {
         Debug.time("projection") {
             projection.refresh(items: library.items,
                                libraryVersion: library.version,
+                               isInLibrary: library.contains,
                                events: events,
                                eventsStamp: eventsStamp,
                                app: app,
