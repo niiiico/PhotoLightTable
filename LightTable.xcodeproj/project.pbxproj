@@ -184,7 +184,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# Derived from the commit count rather than a local tally: the same commit\n# yields the same number on every machine, and history only grows, so it is\n# monotonic without any state to keep in step.\ncd \"$SRCROOT\"\n\nif git rev-parse --git-dir > /dev/null 2>&1; then\n  COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)\n  COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\n  # A build from a modified tree is not the commit it claims to be, so it is\n  # marked rather than being indistinguishable from a clean one.\n  if git diff --quiet HEAD 2>/dev/null; then MARK=\"\"; else MARK=\"+\"; fi\nelse\n  COUNT=0\n  COMMIT=\"unknown\"\n  MARK=\"\"\nfi\n\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$PLIST\" ]; then\n  # CFBundleVersion has to stay purely numeric; the marker and the hash go in\n  # keys of our own.\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildLabel ${COUNT}${MARK}\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildLabel string ${COUNT}${MARK}\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildCommit $COMMIT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildCommit string $COMMIT\" \"$PLIST\"\nfi\n\n# Sparkle reads these four from the bundle. They are static rather than\n# derived, but they are written here so the project keeps a generated\n# Info.plist rather than gaining a checked-in one for four keys. macOS\n# only: there is no Sparkle on iOS.\nif [ \"$PLATFORM_NAME\" = \"macosx\" ] && [ -f \"$PLIST\" ]; then\n  set_plist() {\n    /usr/libexec/PlistBuddy -c \"Set :$1 $2\" \"$PLIST\" 2>/dev/null \\\n      || /usr/libexec/PlistBuddy -c \"Add :$1 $3 $2\" \"$PLIST\"\n  }\n  set_plist SUFeedURL https://ota.int.dev2.net/lighttable/macos/appcast.xml string\n  set_plist SUPublicEDKey kpzX3tcBAA972oWw0uUANOBbMDtr4+/y0IU6OtzP388= string\n  set_plist SUEnableAutomaticChecks true bool\n  set_plist SUAutomaticallyUpdate true bool\n  set_plist SUScheduledCheckInterval 3600 integer\nfi\n\n# The iOS update check polls this; there is no Sparkle on iOS.\nif [ \"$PLATFORM_NAME\" != \"macosx\" ] && [ -f \"$PLIST\" ]; then\n  URL=https://ota.int.dev2.net/api/v1/apps/lighttable/ios/latest.json\n  /usr/libexec/PlistBuddy -c \"Set :LTUpdateCheckURL $URL\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTUpdateCheckURL string $URL\" \"$PLIST\"\nfi\n";
+			shellScript = "set -e\n# Derived from the commit count rather than a local tally: the same commit\n# yields the same number on every machine, and history only grows, so it is\n# monotonic without any state to keep in step.\ncd \"$SRCROOT\"\n\nif git rev-parse --git-dir > /dev/null 2>&1; then\n  # The count is only monotonic over the whole history. From a shallow clone it\n  # comes out smaller than what has already shipped, and both Sparkle and the\n  # iOS check compare it as a number — so this is a build worth refusing rather\n  # than publishing as older than the thing it replaces.\n  if [ \"$(git rev-parse --is-shallow-repository 2>/dev/null)\" = \"true\" ]; then\n    echo \"error: shallow clone — the build number would go backwards\" >&2\n    exit 1\n  fi\n  COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)\n  COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\n  # A build from a modified tree is not the commit it claims to be, so it is\n  # marked rather than being indistinguishable from a clean one.\n  if git diff --quiet HEAD 2>/dev/null; then MARK=\"\"; else MARK=\"+\"; fi\nelse\n  COUNT=0\n  COMMIT=\"unknown\"\n  MARK=\"\"\nfi\n\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n# Everything this writes fails silently downstream — an unstamped build calls\n# itself build 1, which Sparkle offers for ever, and an iOS build without the\n# check URL simply stops looking. So the one place that can still be loud is\n# here.\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: no Info.plist at $PLIST, so nothing was stamped\" >&2\n  exit 1\nfi\n\nif true; then\n  # CFBundleVersion has to stay purely numeric; the marker and the hash go in\n  # keys of our own.\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildLabel ${COUNT}${MARK}\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildLabel string ${COUNT}${MARK}\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :LTBuildCommit $COMMIT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTBuildCommit string $COMMIT\" \"$PLIST\"\nfi\n\n# Sparkle reads these four from the bundle. They are static rather than\n# derived, but they are written here so the project keeps a generated\n# Info.plist rather than gaining a checked-in one for four keys. macOS\n# only: there is no Sparkle on iOS.\nif [ \"$PLATFORM_NAME\" = \"macosx\" ]; then\n  set_plist() {\n    /usr/libexec/PlistBuddy -c \"Set :$1 $2\" \"$PLIST\" 2>/dev/null \\\n      || /usr/libexec/PlistBuddy -c \"Add :$1 $3 $2\" \"$PLIST\"\n  }\n  set_plist SUFeedURL https://ota.int.dev2.net/lighttable/macos/appcast.xml string\n  set_plist SUPublicEDKey kpzX3tcBAA972oWw0uUANOBbMDtr4+/y0IU6OtzP388= string\n  set_plist SUEnableAutomaticChecks true bool\n  set_plist SUAutomaticallyUpdate true bool\n  set_plist SUScheduledCheckInterval 3600 integer\nfi\n\n# The iOS update check polls this; there is no Sparkle on iOS.\nif [ \"$PLATFORM_NAME\" != \"macosx\" ]; then\n  URL=https://ota.int.dev2.net/api/v1/apps/lighttable/ios/latest.json\n  /usr/libexec/PlistBuddy -c \"Set :LTUpdateCheckURL $URL\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :LTUpdateCheckURL string $URL\" \"$PLIST\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -245,7 +245,6 @@
 				DEVELOPMENT_TEAM = PU9QJY3H6Q;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -302,7 +301,6 @@
 				DEVELOPMENT_TEAM = PU9QJY3H6Q;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -336,6 +334,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = LightTable;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
@@ -376,6 +375,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = LightTable;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
